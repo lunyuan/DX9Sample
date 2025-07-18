@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{a0f59d2c-e740-4f46-9973-3ddadbf6bcf9}</ProjectGuid>
+    <RootNamespace>DX9Sample</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <IncludePath>C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Include;$(VC_IncludePath);$(WindowsSDK_IncludePath);C:\Program Files\Autodesk\FBX\FBX SDK\2020.3.7\include;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\lib\x64;$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);C:\Program Files\Autodesk\FBX\FBX SDK\2020.3.7\lib\x64\debug;$(LibraryPath)</LibraryPath>
+    <ExecutablePath>$(ProjectDir)test;$(ExecutablePath)</ExecutablePath>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;x64;_WINDOWS;_UNICODE;UNICODE;DEBUG;_CRT_SECURE_NO_WARNINGS%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalModuleDependencies>libfbxsdk.lib</AdditionalModuleDependencies>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>libfbxsdk.lib;alembic.lib;libxml2.lib;zlib.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>$(ProjectDir)test\$(TargetName)$(TargetExt)</OutputFile>
+      <ProfileGuidedDatabase>$(ProjectDir)test\$(TargetName).pgd</ProfileGuidedDatabase>
+      <ProgramDatabaseFile>$(ProjectDir)test\$(TargetName).pgd</ProgramDatabaseFile>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="Src\AllocateHierarchy.cpp" />
+    <ClCompile Include="Src\AnimationPlayer.cpp" />
+    <ClCompile Include="Src\Exporter.cpp" />
+    <ClCompile Include="Src\FbxLoader.cpp" />
+    <ClCompile Include="Src\GltfLoader.cpp" />
+    <ClCompile Include="Src\Loader.cpp" />
+    <ClCompile Include="Src\main.cpp" />
+    <ClCompile Include="Src\ModelManager.cpp" />
+    <ClCompile Include="Src\RenderTargetManager.cpp" />
+    <ClCompile Include="Src\SkinMesh.cpp" />
+    <ClCompile Include="Src\stb_image_impl.cpp" />
+    <ClCompile Include="Src\TextureManager.cpp" />
+    <ClCompile Include="Src\Visualizer.cpp" />
+    <ClCompile Include="Src\XFileLoader.cpp" />
+    <ClCompile Include="Src\XModelLoader.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Src\AnimationPlayer.h" />
+    <ClInclude Include="Src\Exporter.h" />
+    <ClInclude Include="Src\FbxLoader.h" />
+    <ClInclude Include="Src\GltfLoader.h" />
+    <ClInclude Include="Src\IModelLoader.h" />
+    <ClInclude Include="Src\IRenderTargetManager.h" />
+    <ClInclude Include="Src\ITextureManager.h" />
+    <ClInclude Include="Src\json.hpp" />
+    <ClInclude Include="Src\Loader.h" />
+    <ClInclude Include="Src\ModelData.h" />
+    <ClInclude Include="Src\ModelManager.h" />
+    <ClInclude Include="Src\RenderTargetManager.h" />
+    <ClInclude Include="Src\SkinMesh.h" />
+    <ClInclude Include="Src\Skeleton.h" />
+    <ClInclude Include="Src\SkinMeshFactory.h" />
+    <ClInclude Include="Src\TextureManager.h" />
+    <ClInclude Include="Src\tiny_gltf.h" />
+    <ClInclude Include="Src\Utilities.h" />
+    <ClInclude Include="Src\Visualizer.h" />
+    <ClInclude Include="Src\XFileLoader.h" />
+    <ClInclude Include="Src\XFileTypes.h" />
+    <ClInclude Include="Src\XModelLoader.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
