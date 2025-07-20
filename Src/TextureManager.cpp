@@ -1,5 +1,17 @@
 ﻿#include "TextureManager.h"
 
+// Factory
+std::unique_ptr<ITextureManager> CreateTextureManager(
+  ComPtr<IDirect3DDevice9> device
+) {
+  if (!device.Get()) {
+    throw std::invalid_argument("CreateTextureManager: device 為 nullptr");
+  }
+  auto mgr = std::make_unique<TextureManager>(device);
+  mgr->Initialize(device);
+  return mgr;
+}
+
 TextureManager::TextureManager(ComPtr<IDirect3DDevice9> device) noexcept
   : device_(device) {
 }
@@ -37,8 +49,16 @@ std::shared_ptr<IDirect3DBaseTexture9> TextureManager::Load(
     }
   }
 
-  //  從檔案載入貼圖 (Managed Pool)
+  //  從檔案載入貼圖 (Managed Pool) - 對bg.bmp使用綠色色彩鍵
   IDirect3DBaseTexture9* rawTex = nullptr;
+  D3DCOLOR colorKey = 0; // 預設無色彩鍵
+  
+  // 檢查是否為bg.bmp或bt.bmp，使用綠色色彩鍵
+  std::string filename = filepath.filename().string();
+  if (filename == "bg.bmp" || filename == "bt.bmp") {
+    colorKey = D3DCOLOR_XRGB(0, 255, 0); // 純綠色作為透明色
+  }
+  
   HRESULT hr = D3DXCreateTextureFromFileExW(
     device_.Get(),
     filepath.wstring().c_str(),
@@ -47,7 +67,7 @@ std::shared_ptr<IDirect3DBaseTexture9> TextureManager::Load(
     D3DFMT_UNKNOWN,
     D3DPOOL_MANAGED,
     D3DX_DEFAULT, D3DX_DEFAULT,
-    0, nullptr, nullptr,
+    colorKey, nullptr, nullptr,
     reinterpret_cast<IDirect3DTexture9**>(&rawTex)
   );
   if (FAILED(hr) || rawTex == nullptr) {

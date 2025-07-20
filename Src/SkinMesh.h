@@ -17,13 +17,20 @@ using namespace DirectX;
 
 struct Vertex {
   XMFLOAT3    pos;        // 位置
-  //float       rhw;        // 齊次倒數
   XMFLOAT3    norm;       // 法線
   D3DCOLOR    col;        // 頂點色
   D3DCOLOR    spec;       // 鏡面色
   XMFLOAT2    uv;         // UV
   XMFLOAT4    weights;    // 骨骼權重
   uint8_t     boneIndices[4];// 骨骼索引
+};
+
+struct VertexSimple {
+  XMFLOAT3    pos;    // 位置
+  float       rhw;    // 齊次倒數（若使用 XYZRHW 模式）
+  XMFLOAT3    norm;   // 法線
+  D3DCOLOR    color;  // 頂點顏色
+  XMFLOAT2    uv;     // UV 座標
 };
 
 struct Material {

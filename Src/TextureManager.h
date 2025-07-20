@@ -44,11 +44,6 @@ private:
     std::shared_ptr<IDirect3DBaseTexture9>> cache_;
 };
 
-// Factory
-inline std::unique_ptr<ITextureManager> CreateTextureManager(
-  ComPtr<IDirect3DDevice9> device
-) {
-  auto mgr = std::make_unique<TextureManager>(device);
-  mgr->Initialize(device);
-  return mgr;
-}
+/// <summary>Factory 函式：建立預設實作的 TextureManager。</summary>
+std::unique_ptr<ITextureManager> CreateTextureManager(ComPtr<IDirect3DDevice9> device);
+

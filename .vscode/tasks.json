@@ -1,0 +1,115 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build DX9Sample (Debug x64)",
+            "type": "shell",
+            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe\"",
+            "args": [
+                "DX9Sample.vcxproj",
+                "-p:Configuration=Debug",
+                "-p:Platform=x64"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": ["$msCompile"],
+            "detail": "Build the DirectX 9 sample project using MSBuild"
+        },
+        {
+            "label": "Build DX9Sample (Release x64)",
+            "type": "shell",
+            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe\"",
+            "args": [
+                "DX9Sample.vcxproj",
+                "-p:Configuration=Release",
+                "-p:Platform=x64"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": "$msCompile",
+            "detail": "Build the DirectX 9 sample project in Release mode"
+        },
+        {
+            "label": "Clean DX9Sample",
+            "type": "shell",
+            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe\"",
+            "args": [
+                "DX9Sample.vcxproj",
+                "-t:Clean",
+                "-p:Configuration=Debug",
+                "-p:Platform=x64"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": "$msCompile",
+            "detail": "Clean the DirectX 9 sample project"
+        },
+        {
+            "label": "Rebuild DX9Sample",
+            "type": "shell",
+            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe\"",
+            "args": [
+                "DX9Sample.vcxproj",
+                "-t:Rebuild",
+                "-p:Configuration=Debug",
+                "-p:Platform=x64"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": "$msCompile",
+            "detail": "Rebuild the DirectX 9 sample project from scratch"
+        },
+        {
+            "label": "Run DX9Sample",
+            "type": "shell",
+            "command": "cd",
+            "args": [
+                "test",
+                "&&",
+                ".\\DX9Sample.exe"
+            ],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "detail": "Run the compiled DirectX 9 sample executable",
+            "dependsOn": "Build DX9Sample (Debug x64)"
+        }
+    ]
+}
