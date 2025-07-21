@@ -12,6 +12,9 @@ struct ICameraController : IInputListener {
   /// 每幀更新攝影機動畫
   virtual void Update(float deltaTime) = 0;
 
+  /// 設置攝影機並應用到裝置
+  virtual void SetupCamera() = 0;
+
   /// 取得最後計算好的 View 矩陣
   virtual XMMATRIX GetViewMatrix() const = 0;
   /// 取得最後計算好的投影矩陣

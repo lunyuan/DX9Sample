@@ -3,6 +3,11 @@
 #include <streambuf>
 #include <iostream>
 #include "EngineContext.h"
+#include "GameScene.h"
+#include "PauseScene.h"
+#include "SettingsScene.h"
+#include "ISceneManager.h"
+#include "IEventManager.h"
 
 // 全域 EngineContext 實例
 static std::unique_ptr<IEngineContext> g_engine;
@@ -29,6 +34,13 @@ protected:
 
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
+  // 分配控制台視窗以顯示調試輸出
+  AllocConsole();
+  freopen_s((FILE**)stdout, "CONOUT$", "w", stdout);
+  freopen_s((FILE**)stderr, "CONOUT$", "w", stderr);
+  freopen_s((FILE**)stdin, "CONIN$", "r", stdin);
+  std::ios::sync_with_stdio(true);
+  
 
   DebugBuffer debugBuf;
   std::cerr.rdbuf(&debugBuf);
@@ -83,17 +95,64 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     return -1;
   }
 
-  // 4. 載入資源
+  // 4. 嘗試載入資源 (舊系統 - 如果失敗也繼續，因為新架構不依賴它)
   hr = g_engine->LoadAssets(
-    L"test.x",  // 3D 模型檔
-    L"test.bmp"      // 材質貼圖
+    L"test.x",  // 改用test.x，如果失敗就跳過
+    L"test.bmp" // 改用test.bmp
   );
   if (FAILED(hr)) {
-    MessageBoxW(hWnd, L"Assets Loading Failed", L"Error", MB_OK | MB_ICONERROR);
-    return -1;
+    // Warning: Legacy assets loading failed, continuing with new architecture...
+    // 不要退出程式，繼續使用新架構
   }
 
-  // 5. 執行主迴圈
+  // 5. 註冊所有場景並設置場景管理
+  auto* sceneManager = g_engine->GetSceneManager();
+  auto* eventManager = g_engine->GetEventManager();
+  if (sceneManager && eventManager) {
+    // 註冊所有場景
+    sceneManager->RegisterScene("GameScene", CreateGameScene);
+    sceneManager->RegisterScene("PauseScene", CreatePauseScene);
+    sceneManager->RegisterScene("SettingsScene", CreateSettingsScene);
+    
+    // 設置場景導航事件處理
+    eventManager->Subscribe<PauseMenuAction>([sceneManager](const PauseMenuAction& event) {
+      
+      if (event.action == "resume") {
+        // 彈出暫停場景返回遊戲
+        sceneManager->PopScene();
+      } else if (event.action == "settings") {
+        // 推送設定場景
+        sceneManager->PushScene("SettingsScene");
+      } else if (event.action == "back_to_pause") {
+        // 從設定場景返回暫停場景
+        sceneManager->PopScene();
+      } else if (event.action == "quit") {
+        // 退出應用程式
+        PostQuitMessage(0);
+      }
+    });
+    
+    // 處理遊戲狀態變更事件（從遊戲場景觸發暫停）
+    eventManager->Subscribe<Events::GameStateChanged>([sceneManager](const Events::GameStateChanged& event) {
+      
+      if (event.previousState == "playing" && event.newState == "paused") {
+        // 推送暫停場景
+        sceneManager->PushScene("PauseScene");
+      }
+    });
+    
+    // 初始切換到遊戲場景
+    if (!sceneManager->SwitchToScene("GameScene")) {
+      MessageBoxW(hWnd, L"Failed to initialize GameScene", L"Error", MB_OK | MB_ICONERROR);
+      return -1;
+    }
+    
+    
+  } else {
+    // Warning: SceneManager or EventManager not available, using legacy mode
+  }
+
+  // 6. 執行主迴圈
   hr = g_engine->Run();
   if (FAILED(hr)) {
     MessageBoxW(hWnd, L"EngineContext Run Failed", L"Error", MB_OK | MB_ICONERROR);

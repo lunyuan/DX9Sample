@@ -5,6 +5,7 @@
 #include <memory>
 #include "IInputListener.h"
 #include "IUIInputListener.h"
+#include "IUIListener.h"
 
 // 前向宣告新UI組件
 struct UIComponentNew;
@@ -25,13 +26,14 @@ struct IUIManager : public IInputListener {
   virtual HRESULT Render(IDirect3DDevice9* device) = 0;
   
   // 新增多層UI功能
-  virtual int CreateLayer(const std::wstring& name, float alpha = 1.0f) = 0;
+  virtual int CreateLayer(const std::wstring& name, float priority = 0.0f, float alpha = 1.0f) = 0;
   virtual void SetLayerVisible(int layerId, bool visible) = 0;
   virtual void SetLayerAlpha(int layerId, float alpha) = 0;
   
   // 添加UI元素
-  virtual void AddText(const std::wstring& text, int x, int y, int width, int height, 
+  virtual int AddText(const std::wstring& text, int x, int y, int width, int height, 
                       unsigned long color = 0xFFFFFFFF, int layer = 0) = 0;
+  virtual void UpdateText(int textId, const std::wstring& newText) = 0;
   virtual int AddImage(const std::wstring& imagePath, int x, int y, int width, int height,
                        bool useTransparency = true, unsigned long color = 0xFFFFFFFF, int layer = 0, bool draggable = false) = 0;
   
@@ -48,7 +50,8 @@ struct IUIManager : public IInputListener {
   
   // 新的組件系統接口
   virtual UIComponentNew* CreateImage(const std::wstring& imagePath, int x, int y, int width, int height, 
-                                     bool draggable = false, UIComponentNew* parent = nullptr) = 0;
+                                     bool draggable = false, UIComponentNew* parent = nullptr,
+                                     bool allowDragFromTransparent = false) = 0;
   virtual UIComponentNew* CreateButton(const std::wstring& text, int x, int y, int width, int height,
                                       std::function<void()> onClick, UIComponentNew* parent = nullptr,
                                       const std::wstring& normalImage = L"",
@@ -57,7 +60,18 @@ struct IUIManager : public IInputListener {
                                       const std::wstring& disabledImage = L"") = 0;
   virtual UIComponentNew* CreateEdit(int x, int y, int width, int height, UIComponentNew* parent = nullptr,
                                     const std::wstring& backgroundImage = L"") = 0;
+  
+  // 按名稱或ID查找組件
+  virtual UIComponentNew* FindComponentByName(const std::wstring& name) = 0;
+  virtual UIComponentNew* FindComponentById(int id) = 0;
+  
+  // UI事件監聽器管理
+  virtual void AddUIListener(IUIListener* listener) = 0;
+  virtual void RemoveUIListener(IUIListener* listener) = 0;
 };
 
+// Forward declaration
+struct ITextureManager;
+
 /// <summary>Factory 函式：建立預設實作的 UIManager。</summary>
-std::unique_ptr<IUIManager> CreateUIManager(class ITextureManager* textureManager = nullptr);
+std::unique_ptr<IUIManager> CreateUIManager(ITextureManager* textureManager = nullptr);

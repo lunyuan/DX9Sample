@@ -94,20 +94,19 @@ struct IAssetManager {
     virtual size_t GetAssetCount() const = 0;
     virtual void PrintDebugInfo() const = 0;
 
+    // 具體的載入方法 - 避免模板特化問題
+    virtual std::shared_ptr<ModelData> LoadModel(const std::string& assetPath) = 0;
+    virtual std::vector<std::shared_ptr<ModelData>> LoadAllModels(const std::string& assetPath) = 0;
+    virtual std::shared_ptr<IDirect3DTexture9> LoadTexture(const std::string& assetPath) = 0;
+
 protected:
     // 內部實作方法 - 由具體類別實作
     virtual std::shared_ptr<ModelData> LoadModelImpl(const std::string& fullPath) = 0;
     virtual std::shared_ptr<IDirect3DTexture9> LoadTextureImpl(const std::string& fullPath) = 0;
-};
-
-protected:
+    
     // 解決模板特化的輔助方法
     virtual std::string ResolveAssetPath(const std::string& assetPath, AssetType type) const = 0;
-    
-public:
-    // 具體的載入方法 - 避免模板特化問題
-    virtual std::shared_ptr<ModelData> LoadModel(const std::string& assetPath) = 0;
-    virtual std::shared_ptr<IDirect3DTexture9> LoadTexture(const std::string& assetPath) = 0;
+};
 
 // Factory 函式
 std::unique_ptr<IAssetManager> CreateAssetManager();

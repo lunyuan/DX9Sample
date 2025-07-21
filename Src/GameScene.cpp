@@ -1,277 +1,715 @@
-#include "GameScene.h"
-#include "IAssetManager.h"
-#include "IUIManager.h"
-#include "IConfigManager.h"
-#include "LightManager.h"
-#include "CameraController.h"
-#include "Scene3D.h"
-#include "DirectionalLight.h"
-#include "ModelData.h"
+﻿#include "GameScene.h"
 #include <iostream>
+#include "PauseScene.h"
+// #include "IUISystem.h" // Removed - using UIManager only
+#include "IUIManager.h"
+#include "UIManager.h"  // 需要具體類別來使用 GetImageSize
+#include "IAssetManager.h"
+#include "IConfigManager.h"
+#include "ISceneManager.h"
+#include "ICameraController.h"
+#include "ModelData.h"
+#include <d3d9.h>
+#include <d3dx9.h>
+#include <chrono>
 
-GameScene::GameScene()
+GameScene::GameScene() 
     : Scene("GameScene")
-    , elapsedTime_(0.0f)
-    , showDebugInfo_(false)
-    , pauseButtonId_(-1)
-    , settingsButtonId_(-1)
-    , helpButtonId_(-1)
+    , EventListener(nullptr)  // 暫時傳入 nullptr，將在 OnInitialize 中重新初始化
+    , pauseButtonPtr_(nullptr)
     , hudLayerId_(-1)
-    , screenWidth_(800)
-    , screenHeight_(600)
+    , gameLayerId_(-1)
+    , pauseButtonId_(-1)
+    , scoreTextId_(-1)
+    , levelTextId_(-1)
+    , expTextId_(-1)
+    , playerLevel_(1)
+    , playerExperience_(0)
+    , score_(0)
+    , gameTime_(0.0f)
+    , isPaused_(false)
+    , playerId_("player_001")
 {
-    // 遊戲場景通常不透明
     SetTransparent(false);
 }
 
+GameScene::~GameScene() {
+    // 在析構前清理事件訂閱
+    // 注意：此時 eventManager_ 可能已經無效，所以設為 nullptr
+    SetEventManager(nullptr);
+}
+
 bool GameScene::OnInitialize() {
-    std::cout << "Initializing GameScene..." << std::endl;
     
-    // 從配置讀取螢幕尺寸
-    if (configManager_) {
-        screenWidth_ = configManager_->GetInt("graphics.width", 800);
-        screenHeight_ = configManager_->GetInt("graphics.height", 600);
-        showDebugInfo_ = configManager_->GetBool("debug.showFPS", true);
-    }
-    
-    // 按順序初始化各個子系統
-    if (!InitializeAssets()) {
-        std::cerr << "GameScene: Failed to initialize assets" << std::endl;
+    if (!Scene::OnInitialize()) {
+        std::cerr << "GameScene: Scene::OnInitialize failed" << std::endl;
         return false;
     }
     
-    if (!InitializeLighting()) {
-        std::cerr << "GameScene: Failed to initialize lighting" << std::endl;
+    // 設置 EventListener
+    auto* eventManager = services_->GetEventManager();
+    if (eventManager) {
+        SetEventManager(eventManager);  // 設置 EventListener 的 eventManager_
+        
+        // 註冊事件處理器
+        try {
+            LISTEN_TO_EVENT(Events::UIComponentClicked, OnUIComponentClicked);
+            LISTEN_TO_EVENT(PlayerLevelUp, OnPlayerLevelUp);
+            LISTEN_TO_EVENT(Events::ConfigurationChanged, OnConfigChanged);
+            LISTEN_TO_EVENT(PauseMenuAction, OnPauseMenuAction);
+            
+        } catch (const std::exception& e) {
+            std::cerr << "GameScene: Failed to register event handlers: " << e.what() << std::endl;
+            return false;
+        }
+    } else {
+        std::cerr << "GameScene: EventManager not available" << std::endl;
         return false;
     }
     
-    if (!InitializeCamera()) {
-        std::cerr << "GameScene: Failed to initialize camera" << std::endl;
+    // 載入遊戲資產
+    OutputDebugStringA("GameScene::OnInitialize - About to load game assets\n");
+    try {
+        LoadGameAssets();
+    } catch (const std::exception& e) {
+        std::cerr << "GameScene: Failed to load assets: " << e.what() << std::endl;
+        OutputDebugStringA(("GameScene: Exception loading assets: " + std::string(e.what()) + "\n").c_str());
+        return false;
+    }
+    OutputDebugStringA("GameScene::OnInitialize - Finished loading game assets\n");
+    
+    // 檢查模型是否真的載入了
+    if (!loadedModels_.empty()) {
+        OutputDebugStringA(("GameScene::OnInitialize - " + std::to_string(loadedModels_.size()) + " models loaded\n").c_str());
+    } else {
+        OutputDebugStringA("GameScene::OnInitialize - WARNING: No models loaded after LoadGameAssets!\n");
+    }
+    
+    // 創建 UI
+    try {
+        CreateGameUI();
+        CreatePersistentHUD();
+    } catch (const std::exception& e) {
+        std::cerr << "GameScene: Failed to create UI: " << e.what() << std::endl;
         return false;
     }
     
-    if (!InitializeUI()) {
-        std::cerr << "GameScene: Failed to initialize UI" << std::endl;
-        return false;
+    // 初始化遊戲狀態
+    auto* configManager = services_->GetConfigManager();
+    if (configManager) {
+        playerLevel_ = configManager->GetInt("game.starting_level", 1);
+        playerExperience_ = configManager->GetInt("game.starting_experience", 0);
+        score_ = configManager->GetInt("game.starting_score", 0);
     }
     
-    std::cout << "GameScene initialized successfully" << std::endl;
-    return true;
-}
-
-bool GameScene::InitializeAssets() {
-    // 載入遊戲場景需要的資產
-    horseModel_ = assetManager_->LoadModel("horse_group.x");
-    if (!horseModel_) {
-        std::cerr << "GameScene: Failed to load horse model" << std::endl;
-        return false;
+    // 註冊為UI事件監聽器
+    auto* uiManager = services_->GetUIManager();
+    if (uiManager) {
+        uiManager->AddUIListener(this);
     }
     
-    horseTexture_ = assetManager_->LoadTexture("Horse2.bmp");
-    if (!horseTexture_) {
-        std::cerr << "GameScene: Failed to load horse texture" << std::endl;
-        return false;
-    }
-    
-    std::cout << "GameScene: Assets loaded successfully" << std::endl;
-    return true;
-}
-
-bool GameScene::InitializeLighting() {
-    // 創建光照管理器
-    lightManager_ = CreateLightManager();
-    if (!lightManager_) {
-        return false;
-    }
-    
-    // 添加基本的方向光
-    auto dirLight = std::make_unique<DirectionalLight>(
-        1.0f, 1.0f, 1.0f,     // 白色光
-        -0.577f, -0.577f, 0.577f  // 光線方向
-    );
-    lightManager_->AddLight(dirLight.release());
-    
-    std::cout << "GameScene: Lighting initialized" << std::endl;
-    return true;
-}
-
-bool GameScene::InitializeCamera() {
-    // 創建相機控制器
-    cameraController_ = CreateCameraController(device_, screenWidth_, screenHeight_);
-    if (!cameraController_) {
-        return false;
-    }
-    
-    std::cout << "GameScene: Camera initialized" << std::endl;
-    return true;
-}
-
-bool GameScene::InitializeUI() {
-    // 創建 HUD 層級
-    hudLayerId_ = uiManager_->CreateLayer(L"GameHUD", 1.0f);
-    
-    // 創建遊戲 UI - 使用配置化的方式而非硬編碼
-    
-    // 背景圖片 (可拖曳)
-    auto* bgImage = uiManager_->CreateImage(L"bg.bmp", 50, 50, 200, 150, true);
-    
-    // 暫停按鈕
-    auto* pauseButton = uiManager_->CreateButton(
-        L"暫停", 10, 10, 80, 30,
-        [this]() { OnPauseButtonClicked(); },
-        bgImage,
-        L"bt.bmp"
-    );
-    
-    // 設定按鈕  
-    auto* settingsButton = uiManager_->CreateButton(
-        L"設定", 10, 50, 80, 30,
-        [this]() { OnSettingsButtonClicked(); },
-        bgImage,
-        L"bt.bmp"
-    );
-    
-    // 說明按鈕
-    auto* helpButton = uiManager_->CreateButton(
-        L"說明", 10, 90, 80, 30,
-        [this]() { OnHelpButtonClicked(); },
-        bgImage,
-        L"bt.bmp"
-    );
-    
-    // 遊戲資訊文字
-    uiManager_->AddText(L"遊戲場景", 10, 10, 200, 30, 0xFFFFFFFF, hudLayerId_);
-    
-    if (showDebugInfo_) {
-        uiManager_->AddText(L"FPS: 60", 10, screenHeight_ - 50, 100, 30, 0xFF00FF00, hudLayerId_);
-        uiManager_->AddText(L"場景: GameScene", 10, screenHeight_ - 80, 200, 30, 0xFF00FF00, hudLayerId_);
-    }
-    
-    std::cout << "GameScene: UI initialized" << std::endl;
     return true;
 }
 
 void GameScene::OnUpdate(float deltaTime) {
-    elapsedTime_ += deltaTime;
+    Scene::OnUpdate(deltaTime);
     
-    // 更新相機
-    if (cameraController_) {
-        cameraController_->Update(deltaTime);
+    if (!isPaused_) {
+        UpdateGameLogic(deltaTime);
     }
-    
-    // 更新場景特定的邏輯
-    // TODO: 更新遊戲物件、動畫等
 }
 
 void GameScene::OnRender() {
-    // 應用光照
-    if (lightManager_) {
-        lightManager_->ApplyAll(device_);
-    }
+    Scene::OnRender();
     
     // 渲染 3D 場景
-    if (cameraController_ && horseModel_) {
-        // 計算視圖和投影矩陣
-        float aspect = static_cast<float>(screenWidth_) / static_cast<float>(screenHeight_);
-        auto viewMatrix = cameraController_->GetViewMatrix();
-        auto projMatrix = cameraController_->GetProjMatrix(aspect);
+    auto* device = services_->GetDevice();
+    if (device) {
+        // 設置基本 3D 渲染狀態
+        device->SetRenderState(D3DRS_LIGHTING, FALSE);
+        device->SetRenderState(D3DRS_ZENABLE, D3DZB_TRUE);
+        device->SetRenderState(D3DRS_CULLMODE, D3DCULL_CCW);
         
-        // TODO: 渲染 3D 模型
-        // 這裡需要更詳細的渲染邏輯
+        // 設置世界變換矩陣
+        D3DXMATRIX worldMatrix;
+        D3DXMatrixIdentity(&worldMatrix);
+        device->SetTransform(D3DTS_WORLD, &worldMatrix);
+        
+        // 使用 CameraController 設置視圖和投影矩陣
+        auto* cameraController = services_->GetCameraController();
+        if (cameraController) {
+            // CameraController 的 SetupCamera 方法會自動設置 view 和 projection 矩陣
+            cameraController->SetupCamera();
+        } else {
+            // Fallback: 如果沒有 camera controller，使用預設矩陣
+            D3DXMATRIX viewMatrix, projMatrix;
+            D3DXVECTOR3 eye(0.0f, 5.0f, -10.0f);
+            D3DXVECTOR3 at(0.0f, 0.0f, 0.0f);
+            D3DXVECTOR3 up(0.0f, 1.0f, 0.0f);
+            D3DXMatrixLookAtLH(&viewMatrix, &eye, &at, &up);
+            
+            float aspect = 800.0f / 600.0f; // 預設解析度
+            D3DXMatrixPerspectiveFovLH(&projMatrix, D3DX_PI / 4.0f, aspect, 1.0f, 1000.0f);
+            
+            device->SetTransform(D3DTS_VIEW, &viewMatrix);
+            device->SetTransform(D3DTS_PROJECTION, &projMatrix);
+        }
+        
+        // 渲染載入的所有3D模型
+        if (!loadedModels_.empty()) {
+            static int renderCount = 0;
+            if (renderCount++ % 60 == 0) { // 每秒輸出一次
+                OutputDebugStringA(("GameScene: Rendering " + std::to_string(loadedModels_.size()) + " models...\n").c_str());
+            }
+            
+            // 啟用光照
+            device->SetRenderState(D3DRS_LIGHTING, TRUE);
+            
+            // 設置簡單的方向光
+            D3DLIGHT9 light;
+            ZeroMemory(&light, sizeof(D3DLIGHT9));
+            light.Type = D3DLIGHT_DIRECTIONAL;
+            light.Diffuse.r = 1.0f;
+            light.Diffuse.g = 1.0f;
+            light.Diffuse.b = 1.0f;
+            light.Diffuse.a = 1.0f;
+            light.Direction = D3DXVECTOR3(-1.0f, -1.0f, 1.0f);
+            device->SetLight(0, &light);
+            device->LightEnable(0, TRUE);
+            
+            // 設置環境光
+            device->SetRenderState(D3DRS_AMBIENT, D3DCOLOR_XRGB(64, 64, 64));
+            
+            // 渲染每個模型
+            int modelIndex = 0;
+            for (const auto& model : loadedModels_) {
+                if (model) {
+                    // 設置世界變換矩陣（水平排列模型）
+                    D3DXMATRIX worldMatrix;
+                    D3DXMatrixTranslation(&worldMatrix, modelIndex * 5.0f - (loadedModels_.size() - 1) * 2.5f, 0.0f, 0.0f);
+                    device->SetTransform(D3DTS_WORLD, &worldMatrix);
+                    
+                    // 直接讓模型自己處理材質和紋理
+                    // SkinMesh::Draw 會自動處理所有材質和紋理
+                    model->mesh.Draw(device);
+                    
+                    // 調試輸出
+                    static int debugFrameCount = 0;
+                    if (debugFrameCount++ % 300 == 0) { // 每5秒輸出一次
+                        char msg[256];
+                        sprintf_s(msg, "Model %d: %zu materials, %zu vertices\n", 
+                                 modelIndex, model->mesh.materials.size(), model->mesh.vertices.size());
+                        OutputDebugStringA(msg);
+                        
+                        for (size_t i = 0; i < model->mesh.materials.size(); ++i) {
+                            sprintf_s(msg, "  Material %zu: tex=%p\n", i, model->mesh.materials[i].tex);
+                            OutputDebugStringA(msg);
+                        }
+                    }
+                    
+                    modelIndex++;
+                }
+            }
+            
+        } else {
+            static int noModelCount = 0;
+            if (noModelCount++ % 60 == 0) { // 每秒輸出一次
+                OutputDebugStringA("GameScene: No model loaded, rendering test triangle\n");
+            }
+            
+            // 如果沒有載入模型，渲染測試三角形
+            struct Vertex {
+                float x, y, z;
+                unsigned long color;
+            };
+            
+            Vertex vertices[3] = {
+                { 0.0f,  3.0f, 0.0f, 0xFFFF0000 }, // 頂部紅色
+                {-3.0f, -3.0f, 0.0f, 0xFF00FF00 }, // 左下綠色
+                { 3.0f, -3.0f, 0.0f, 0xFF0000FF }  // 右下藍色
+            };
+            
+            device->SetFVF(D3DFVF_XYZ | D3DFVF_DIFFUSE);
+            device->DrawPrimitiveUP(D3DPT_TRIANGLELIST, 1, vertices, sizeof(Vertex));
+        }
     }
-    
-    // UI 由 UIManager 自動渲染，不需要在這裡處理
 }
 
 void GameScene::OnCleanup() {
-    std::cout << "Cleaning up GameScene..." << std::endl;
+    // 在調用基類清理前，先清理事件訂閱
+    // 這可以防止在清理過程中事件處理器訪問無效的 services_
+    SetEventManager(nullptr);
     
-    // 清理子系統
-    lightManager_.reset();
-    cameraController_.reset();
-    scene3D_.reset();
-    
-    // 清理資產參考
-    horseModel_.reset();
-    horseTexture_.reset();
-    
-    // 清理 UI（UIManager 會自動處理）
-    
-    std::cout << "GameScene cleaned up" << std::endl;
-}
-
-void GameScene::OnSceneEnter() {
-    std::cout << "Entering GameScene" << std::endl;
-    
-    // 場景進入時的特殊處理
-    if (configManager_ && configManager_->GetBool("debug.enableLogging", true)) {
-        std::cout << "GameScene: Debug logging enabled" << std::endl;
+    // 取消註冊UI事件監聽器
+    if (services_) {
+        auto* uiManager = services_->GetUIManager();
+        if (uiManager) {
+            uiManager->RemoveUIListener(this);
+        }
     }
+    
+    // 清理 UI 元素引用
+    pauseButtonPtr_ = nullptr;
+    
+    // 清理 3D 模型指標
+    loadedModels_.clear();
+    loadedTexture_.reset();
+    
+    Scene::OnCleanup();
 }
 
-void GameScene::OnSceneExit() {
-    std::cout << "Exiting GameScene" << std::endl;
+void GameScene::OnEnter() {
+    Scene::OnEnter();
     
-    // 場景退出時的特殊處理
-    // 例如：保存遊戲狀態、釋放資源等
+    // 恢復遊戲 UI 的互動 - 使用 UIManager
+    
+    // 發送場景進入事件
+    auto* eventManager = services_->GetEventManager();
+    if (eventManager) {
+        Events::SceneChanged sceneEvent;
+        sceneEvent.previousSceneName = "";
+        sceneEvent.newSceneName = "GameScene";
+        sceneEvent.isOverlay = false;
+        Emit(sceneEvent);
+    }
+    
+}
+
+void GameScene::OnExit() {
+    // 檢查 services_ 是否有效
+    if (!services_) {
+        OutputDebugStringA("GameScene::OnExit - services_ is null\n");
+        Scene::OnExit();
+        return;
+    }
+    
+    // 清理 UI - 使用 UIManager
+    auto* uiManager = services_->GetUIManager();
+    if (uiManager) {
+        if (gameLayerId_ >= 0) {
+            uiManager->ClearLayer(gameLayerId_);
+        }
+        if (hudLayerId_ >= 0) {
+            uiManager->ClearLayer(hudLayerId_);
+        }
+    }
+    
+    Scene::OnExit();
 }
 
 bool GameScene::OnHandleInput(const MSG& msg) {
-    // 處理遊戲特定的輸入
-    switch (msg.message) {
-        case WM_KEYDOWN:
-            switch (msg.wParam) {
-                case VK_ESCAPE:
-                    OnPauseButtonClicked();
-                    return true;
-                    
-                case VK_F1:
-                    OnHelpButtonClicked();
-                    return true;
-                    
-                case 'D':
-                case 'd':
-                    showDebugInfo_ = !showDebugInfo_;
-                    std::cout << "Debug info " << (showDebugInfo_ ? "enabled" : "disabled") << std::endl;
-                    return true;
-            }
-            break;
+    // 調試輸入消息
+    if (msg.message == WM_KEYDOWN) {
+        
+        // 處理空格鍵
+        if (msg.wParam == VK_SPACE) {
+            // 這裡可以觸發暫停選單
+            return true; // 表示已處理
+        }
     }
     
-    // 讓相機處理輸入
-    if (cameraController_) {
-        // 這裡需要適配 ICameraController 的輸入處理介面
-        // cameraController_->HandleInput(msg);
+    // 讓基類處理其他輸入
+    return Scene::OnHandleInput(msg);
+}
+
+void GameScene::CreateGameUI() {
+    // 調試輸出：確認此函數只被調用一次
+    static int createCount = 0;
+    createCount++;
+    OutputDebugStringA(("GameScene::CreateGameUI called - count: " + std::to_string(createCount) + "\n").c_str());
+    
+    // 使用舊的 UIManager，它支援父子關係
+    auto* uiManager = services_->GetUIManager();
+    if (!uiManager) {
+        std::cerr << "GameScene: UIManager not available" << std::endl;
+        return;
+    }
+    
+    // 獲取圖片實際尺寸
+    int bgWidth = 0, bgHeight = 0;
+    int btWidth = 0, btHeight = 0;
+    int sevenWidth = 0, sevenHeight = 0;
+    
+    if (auto* uiMgr = dynamic_cast<UIManager*>(uiManager)) {
+        uiMgr->GetImageSize(L"bg.png", bgWidth, bgHeight);   // 修正：使用 bg.png
+        uiMgr->GetImageSize(L"bt.bmp", btWidth, btHeight);
+        uiMgr->GetImageSize(L"7.png", sevenWidth, sevenHeight);  // 修正：使用 7.png
+    }
+    
+    // 如果無法獲取尺寸，使用預設值
+    if (bgWidth == 0) bgWidth = 1024;
+    if (bgHeight == 0) bgHeight = 128;  // 根據調試輸出調整為 128
+    if (btWidth == 0) btWidth = 256;
+    if (btHeight == 0) btHeight = 64;
+    if (sevenWidth == 0) sevenWidth = 64;
+    if (sevenHeight == 0) sevenHeight = 64;
+    
+    // 創建背景圖片作為父容器 (可拖曳，位置在 100, 100，允許從透明區域拖曳)
+    auto* bgImage = uiManager->CreateImage(L"bg.png", 100, 100, bgWidth, bgHeight, true, nullptr, true);
+    
+    // 輸出調試信息
+    char debugMsg[256];
+    sprintf_s(debugMsg, "Creating bg.png at (100,100) size %dx%d\n", bgWidth, bgHeight);
+    OutputDebugStringA(debugMsg);
+    
+    // 在背景圖片上添加子元素 (使用相對座標，會跟隨父容器移動)
+    auto* pauseButton = uiManager->CreateButton(L"PAUSE", 20, 40, btWidth, btHeight,
+        [this]() { 
+            // 暫停按鈕點擊處理
+            if (services_ && services_->GetSceneManager()) {
+                services_->GetSceneManager()->PushScene("PauseScene");
+            }
+        }, bgImage,          // parent
+        L"bt.bmp");         // button image
+    
+    sprintf_s(debugMsg, "Creating bt.bmp at (20,40) size %dx%d\n", btWidth, btHeight);
+    OutputDebugStringA(debugMsg);
+    
+    // 在按鈕上再添加一層子物件 (使用 7.png)
+    auto* buttonChild = uiManager->CreateImage(L"7.png", 10, 10, sevenWidth, sevenHeight, false, pauseButton);
+    
+    sprintf_s(debugMsg, "Creating 7.png at (10,10) size %dx%d\n", sevenWidth, sevenHeight);
+    OutputDebugStringA(debugMsg);
+    
+    // 輸出調試信息
+    OutputDebugStringA("Created button child with 7.png at relative position (10,10) on the button\n");
+    
+    // 添加文字 (注意：AddText 不支援父子關係，所以文字不會跟隨背景圖片移動)
+    // 為了實現父子關係，可能需要手動計算位置或修改 UIManager
+    uiManager->AddText(L"測試文字", 110, 160, 250, 25, 0xFFFFFFFF, 
+                      uiManager->CreateLayer(L"GameUI", 1.0f));
+    
+    // 添加座標參考點來確認座標系統
+    uiManager->AddText(L"(0,0)", 0, 0, 50, 20, 0xFFFF0000, 
+                      uiManager->CreateLayer(L"Debug", 2.0f));
+    uiManager->AddText(L"(100,100)", 100, 100, 80, 20, 0xFF00FF00, 
+                      uiManager->CreateLayer(L"Debug", 2.0f));
+    uiManager->AddText(L"(200,200)", 200, 200, 80, 20, 0xFF0000FF, 
+                      uiManager->CreateLayer(L"Debug", 2.0f));
+    
+    // 保存暫停按鈕的指標以便後續使用
+    pauseButtonPtr_ = pauseButton;
+    
+    // 新增第二個獨立的可拖曳UI - b-kuang.png
+    // 獲取 b-kuang.png 的尺寸
+    int bkuangWidth = 300;  // 使用指定的尺寸
+    int bkuangHeight = 238;
+    
+    // 創建 b-kuang.png 作為另一個獨立的可拖曳UI (位置在 400, 300，不允許從透明區域拖曳)
+    auto* bkuangImage = uiManager->CreateImage(L"b-kuang.png", 400, 300, bkuangWidth, bkuangHeight, true, nullptr, false);
+    
+    sprintf_s(debugMsg, "Creating b-kuang.png at (400,300) size %dx%d [independent draggable UI]\n", bkuangWidth, bkuangHeight);
+    OutputDebugStringA(debugMsg);
+    
+    // 可以在 b-kuang.png 上添加一些子元素來測試
+    auto* testButton = uiManager->CreateButton(L"TEST", 50, 50, 100, 40,
+        [this]() { 
+            OutputDebugStringA("Test button on b-kuang.png clicked!\n");
+        }, bkuangImage,     // parent is b-kuang.png
+        L"");              // no button image, use default style
+    
+    OutputDebugStringA("Created test button on b-kuang.png at relative position (50,50)\n");
+    
+    // 新增一個獨立的按鈕（不在任何可拖曳UI上），用來測試透明區域點擊穿透
+    auto* standaloneButton = uiManager->CreateButton(L"Standalone", 150, 400, 120, 40,
+        [this]() { 
+            OutputDebugStringA("Standalone button clicked! This proves click-through works.\n");
+        }, nullptr,        // no parent - this is a root component
+        L"");             // no button image, use default style
+    
+    OutputDebugStringA("Created standalone button at (150,400) to test click-through transparency\n");
+    
+    // 示範如何使用名稱查找組件
+    // 稍後可以通過名稱找到組件，例如：
+    // auto* bgComponent = uiManager->FindComponentByName<UIImageNew>(L"bg.png");
+    // auto* testButtonComponent = uiManager->FindComponentByName<UIButtonNew>(L"Button_TEST");
+    
+    // 調試輸出：顯示所有組件的名稱
+    OutputDebugStringA("\n=== Created UI Components ===\n");
+    OutputDebugStringA(("bg.png - ID: " + std::to_string(bgImage->id) + ", Name: " + 
+                       std::string(bgImage->name.begin(), bgImage->name.end()) + "\n").c_str());
+    OutputDebugStringA(("b-kuang.png - ID: " + std::to_string(bkuangImage->id) + ", Name: " + 
+                       std::string(bkuangImage->name.begin(), bkuangImage->name.end()) + "\n").c_str());
+    if (testButton) {
+        OutputDebugStringA(("Test Button - ID: " + std::to_string(testButton->id) + ", Name: " + 
+                           std::string(testButton->name.begin(), testButton->name.end()) + "\n").c_str());
+    }
+    if (standaloneButton) {
+        OutputDebugStringA(("Standalone Button - ID: " + std::to_string(standaloneButton->id) + ", Name: " + 
+                           std::string(standaloneButton->name.begin(), standaloneButton->name.end()) + "\n").c_str());
+    }
+    OutputDebugStringA("=============================\n\n");
+    
+}
+
+void GameScene::CreatePersistentHUD() {
+    auto* uiManager = services_->GetUIManager();
+    if (!uiManager) {
+        return;
+    }
+    
+    // 創建 HUD 層級
+    hudLayerId_ = uiManager->CreateLayer(L"GameHUD", 2.0f); // 高優先權層級
+    
+    // 分數顯示
+    scoreTextId_ = uiManager->AddText(L"Score: 0", 20, 20, 150, 20, 0xFFFFFFFF, hudLayerId_);
+    
+    // 等級顯示  
+    levelTextId_ = uiManager->AddText(L"Level: 1", 20, 45, 150, 20, 0xFFFFFFFF, hudLayerId_);
+    
+    // 經驗值文字
+    expTextId_ = uiManager->AddText(L"Experience: 0", 20, 70, 200, 20, 0xFFFFFF00, hudLayerId_);
+}
+
+void GameScene::OnUIComponentClicked(const Events::UIComponentClicked& event) {
+    
+    // UIManager 使用回調函式處理點擊，所以這個函式可能不會被呼叫
+    // 保留此函式以相容 UISystem 事件
+    if (event.componentId == std::to_string(pauseButtonId_)) {
+        // 推送暫停場景而不是直接切換暫停狀態
+        
+        // 透過 SceneManager 推送 PauseScene
+        if (services_) {
+            auto* sceneManager = services_->GetSceneManager();
+            if (sceneManager) {
+                sceneManager->PushScene("PauseScene");
+            } else {
+                std::cerr << "GameScene: SceneManager not available!" << std::endl;
+            }
+        }
+        
+        // 發送遊戲狀態改變事件
+        Events::GameStateChanged stateEvent;
+        stateEvent.previousState = "playing";
+        stateEvent.newState = "paused";
+        stateEvent.transitionTime = 0.3f;
+        Emit(stateEvent);
+    }
+}
+
+void GameScene::OnPlayerLevelUp(const PlayerLevelUp& event) {
+              
+    ShowLevelUpEffect(event.playerId, event.newLevel);
+    
+    // 更新 HUD 顯示
+    auto* uiManager = services_->GetUIManager();
+    if (uiManager && levelTextId_ >= 0) {
+        std::wstring levelText = L"Level: " + std::to_wstring(event.newLevel);
+        uiManager->UpdateText(levelTextId_, levelText);
+    }
+}
+
+void GameScene::OnConfigChanged(const Events::ConfigurationChanged& event) {
+}
+
+void GameScene::OnPauseMenuAction(const PauseMenuAction& event) {
+    OutputDebugStringA(("GameScene: Received PauseMenuAction: " + event.action + "\n").c_str());
+    
+    if (event.action == "resume") {
+        // 恢復遊戲：彈出暫停場景
+        if (services_ && services_->GetSceneManager()) {
+            services_->GetSceneManager()->PopScene();
+        }
+        
+    } else if (event.action == "settings") {
+        // 切換到設定場景
+        if (services_ && services_->GetSceneManager()) {
+            services_->GetSceneManager()->PushScene("SettingsScene");
+        }
+        
+    } else if (event.action == "quit") {
+        // 退出遊戲
+        PostQuitMessage(0);
+    }
+}
+
+void GameScene::UpdateGameLogic(float deltaTime) {
+    gameTime_ += deltaTime;
+    
+    // 模擬遊戲邏輯 - 每5秒增加分數和經驗值
+    static float lastScoreTime = 0.0f;
+    if (gameTime_ - lastScoreTime >= 5.0f) {
+        TriggerScoreIncrease(100, "time_bonus");
+        
+        // 增加經驗值
+        playerExperience_ += 25;
+        if (CheckLevelUp(playerId_, playerExperience_)) {
+            // 升級邏輯在 CheckLevelUp 中處理
+        }
+        
+        lastScoreTime = gameTime_;
+        
+        // 更新 HUD 顯示
+        auto* uiManager = services_->GetUIManager();
+        if (uiManager) {
+            if (scoreTextId_ >= 0) {
+                std::wstring scoreText = L"Score: " + std::to_wstring(score_);
+                uiManager_->UpdateText(scoreTextId_, scoreText);
+            }
+            if (expTextId_ >= 0) {
+                std::wstring expText = L"Experience: " + std::to_wstring(playerExperience_);
+                uiManager_->UpdateText(expTextId_, expText);
+            }
+        }
+    }
+}
+
+void GameScene::LoadGameAssets() {
+    auto* assetManager = services_->GetAssetManager();
+    if (!assetManager) {
+        std::cerr << "GameScene: AssetManager not available" << std::endl;
+        OutputDebugStringA("GameScene: AssetManager not available\n");
+        return;
+    }
+    
+    OutputDebugStringA("GameScene: Starting to load assets...\n");
+    
+    // 載入遊戲資產
+    try {
+        // 載入所有模型
+        OutputDebugStringA("GameScene: Loading all models from horse_group.x...\n");
+        auto models = assetManager->LoadAllModels("horse_group.x");
+        if (!models.empty()) {
+            loadedModels_ = models;
+            OutputDebugStringA(("GameScene: Successfully loaded " + std::to_string(models.size()) + " models from horse_group.x\n").c_str());
+            
+            // 輸出每個模型的資訊
+            int modelIdx = 0;
+            for (const auto& model : models) {
+                char debugMsg[256];
+                sprintf_s(debugMsg, "  Model %d: %zu vertices, %zu indices, %zu materials\n", 
+                         modelIdx, model->mesh.vertices.size(), model->mesh.indices.size(), 
+                         model->mesh.materials.size());
+                OutputDebugStringA(debugMsg);
+                
+                // 輸出材質資訊
+                for (size_t matIdx = 0; matIdx < model->mesh.materials.size(); ++matIdx) {
+                    sprintf_s(debugMsg, "    Material %zu: tex=%p\n", 
+                             matIdx, model->mesh.materials[matIdx].tex);
+                    OutputDebugStringA(debugMsg);
+                }
+                modelIdx++;
+            }
+        } else {
+            OutputDebugStringA("GameScene: Failed to load models from horse_group.x - returned empty\n");
+        }
+        
+        // 載入紋理
+        OutputDebugStringA("GameScene: Loading test.bmp...\n");
+        auto texture = assetManager->LoadTexture("test.bmp");
+        if (texture) {
+            loadedTexture_ = texture;
+            OutputDebugStringA("GameScene: Successfully loaded test.bmp texture\n");
+            
+            // 將 test.bmp 應用到所有模型
+            auto* device = services_->GetDevice();
+            if (device) {
+                for (auto& model : loadedModels_) {
+                    if (model) {
+                        model->mesh.SetTexture(device, "test.bmp");
+                    }
+                }
+            }
+        } else {
+            OutputDebugStringA("GameScene: Failed to load test.bmp texture - returned null\n");
+        }
+        
+        // 發送資產載入事件
+        Events::AssetLoaded assetEvent;
+        assetEvent.assetPath = "test.x";
+        assetEvent.assetType = "model";
+        assetEvent.success = (!models.empty());
+        assetEvent.errorMessage = models.empty() ? "Failed to load models" : "";
+        Emit(assetEvent);
+                   
+    } catch (const std::exception& e) {
+        std::cerr << "GameScene: Failed to load assets: " << e.what() << std::endl;
+        OutputDebugStringA(("GameScene: Exception in LoadGameAssets: " + std::string(e.what()) + "\n").c_str());
+    } catch (...) {
+        std::cerr << "GameScene: Unknown exception in LoadGameAssets" << std::endl;
+        OutputDebugStringA("GameScene: Unknown exception in LoadGameAssets\n");
+    }
+}
+
+void GameScene::ShowLevelUpEffect(const std::string& playerId, int newLevel) {
+}
+
+bool GameScene::CheckLevelUp(const std::string& playerId, int experience) {
+    int expRequiredForNextLevel = playerLevel_ * 100;
+    
+    if (experience >= expRequiredForNextLevel) {
+        int oldLevel = playerLevel_;
+        playerLevel_++;
+        
+        // 發送升級事件
+        PlayerLevelUp levelUpEvent;
+        levelUpEvent.playerId = playerId;
+        levelUpEvent.oldLevel = oldLevel;
+        levelUpEvent.newLevel = playerLevel_;
+        levelUpEvent.experienceGained = experience - (oldLevel * 100);
+        levelUpEvent.timestamp = gameTime_;
+        
+        Emit(levelUpEvent);
+        
+        return true;
     }
     
     return false;
 }
 
-// UI 事件處理方法
-void GameScene::OnPauseButtonClicked() {
-    std::cout << "GameScene: Pause button clicked" << std::endl;
+void GameScene::TriggerScoreIncrease(int points, const std::string& reason) {
+    int oldScore = score_;
+    score_ += points;
     
-    // TODO: 推送暫停場景到堆疊
-    // sceneManager->PushScene("PauseScene");
+    // 發送分數變更事件
+    PlayerScoreChanged scoreEvent;
+    scoreEvent.playerId = playerId_;
+    scoreEvent.oldScore = oldScore;
+    scoreEvent.newScore = score_;
+    scoreEvent.scoreDelta = points;
+    scoreEvent.reason = reason;
     
-    // 暫時顯示訊息框
-    MessageBoxA(nullptr, "遊戲暫停!\n(這裡應該推送暫停場景)", "GameScene", MB_OK);
+    Emit(scoreEvent);
 }
 
-void GameScene::OnSettingsButtonClicked() {
-    std::cout << "GameScene: Settings button clicked" << std::endl;
+// IUIListener 實現
+void GameScene::OnButtonClicked(UIButtonNew* button) {
+    if (!button) return;
     
-    // TODO: 推送設定場景到堆疊
-    // sceneManager->PushScene("SettingsScene");
+    // 輸出調試信息
+    OutputDebugStringA(("GameScene::OnButtonClicked - Button clicked: " + 
+                       std::string(button->name.begin(), button->name.end()) + 
+                       " (ID: " + std::to_string(button->id) + ")\n").c_str());
     
-    MessageBoxA(nullptr, "打開設定!\n(這裡應該推送設定場景)", "GameScene", MB_OK);
+    // 可以根據按鈕名稱或ID執行不同的操作
+    if (button->name == L"Button_PAUSE") {
+        OutputDebugStringA("  -> This is the PAUSE button\n");
+    } else if (button->name == L"Button_TEST") {
+        OutputDebugStringA("  -> This is the TEST button on b-kuang.png\n");
+    } else if (button->name == L"Button_Standalone") {
+        OutputDebugStringA("  -> This is the Standalone button\n");
+    }
 }
 
-void GameScene::OnHelpButtonClicked() {
-    std::cout << "GameScene: Help button clicked" << std::endl;
+void GameScene::OnComponentClicked(UIComponentNew* component) {
+    if (!component) return;
     
-    // TODO: 推送說明場景到堆疊
-    // sceneManager->PushScene("HelpScene");
+    // 輸出調試信息
+    std::string typeName = "Unknown";
+    if (dynamic_cast<UIButtonNew*>(component)) {
+        typeName = "Button";
+    } else if (dynamic_cast<UIImageNew*>(component)) {
+        typeName = "Image";
+    } else if (dynamic_cast<UIEditNew*>(component)) {
+        typeName = "Edit";
+    }
     
-    MessageBoxA(nullptr, "顯示說明!\n(這裡應該推送說明場景)", "GameScene", MB_OK);
+    OutputDebugStringA(("GameScene::OnComponentClicked - Component clicked: " + 
+                       std::string(component->name.begin(), component->name.end()) + 
+                       " (Type: " + typeName + ", ID: " + std::to_string(component->id) + ")\n").c_str());
+}
+
+// Factory 函式
+std::unique_ptr<IScene> CreateGameScene() {
+    return std::make_unique<GameScene>();
 }

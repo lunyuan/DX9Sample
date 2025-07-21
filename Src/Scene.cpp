@@ -1,8 +1,8 @@
 #include "Scene.h"
+#include <iostream>
 #include "IAssetManager.h"
 #include "IUIManager.h"
 #include "IConfigManager.h"
-#include <iostream>
 
 Scene::Scene(const std::string& name)
     : name_(name)
@@ -56,7 +56,6 @@ bool Scene::Initialize(IServiceLocator* services) {
     initialized_ = true;
     SetState(SceneState::Running);
     
-    std::cout << "Scene " << name_ << " initialized successfully" << std::endl;
     return true;
 }
 
@@ -99,23 +98,19 @@ void Scene::Cleanup() {
     initialized_ = false;
     SetState(SceneState::Uninitialized);
     
-    std::cout << "Scene " << name_ << " cleaned up" << std::endl;
 }
 
 void Scene::OnEnter() {
-    std::cout << "Scene " << name_ << " entered" << std::endl;
     OnSceneEnter();
 }
 
 void Scene::OnExit() {
-    std::cout << "Scene " << name_ << " exited" << std::endl;
     OnSceneExit();
 }
 
 void Scene::OnPause() {
     if (state_ == SceneState::Running) {
         SetState(SceneState::Paused);
-        std::cout << "Scene " << name_ << " paused" << std::endl;
         OnScenePause();
     }
 }
@@ -123,7 +118,6 @@ void Scene::OnPause() {
 void Scene::OnResume() {
     if (state_ == SceneState::Paused) {
         SetState(SceneState::Running);
-        std::cout << "Scene " << name_ << " resumed" << std::endl;
         OnSceneResume();
     }
 }

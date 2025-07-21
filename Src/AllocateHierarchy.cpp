@@ -4,6 +4,9 @@
 #include <new>               // std::nothrow
 #include <cstring>           // std::memcpy
 #include <stdexcept>         // std::runtime_error
+#include <algorithm>         // std::transform
+#include <vector>            // std::vector
+#include <cctype>            // ::tolower, ::toupper
 #include "AllocateHierarchy.h"
 
 // Step 1: Constructor 實作 // error check
@@ -69,16 +72,70 @@ STDMETHODIMP AllocateHierarchy::CreateMeshContainer(
     delete mc;
     return hr;
   }
+  
+  // Also set m_pMesh for compatibility
+  mc->m_pMesh = mc->MeshData.pMesh;
   // 儲存材質與貼圖名稱
   mc->NumMaterials = numMaterials;
   mc->m_Textures.resize(numMaterials);
   mc->m_pMaterials = new D3DMATERIAL9[numMaterials];
   for (UINT i = 0; i < numMaterials; i++) {
     if (pMaterials[i].pTextureFilename) {
-      D3DXCreateTextureFromFileA(
+      // 輸出調試訊息
+      OutputDebugStringA(("Loading texture: " + std::string(pMaterials[i].pTextureFilename) + "\n").c_str());
+      
+      HRESULT texHr = D3DXCreateTextureFromFileA(
         m_device,
         pMaterials[i].pTextureFilename,
         &mc->m_Textures[i]);
+        
+      if (FAILED(texHr)) {
+        OutputDebugStringA(("Failed to load texture: " + std::string(pMaterials[i].pTextureFilename) + " (HRESULT: 0x" + std::to_string(texHr) + ")\n").c_str());
+        
+        // 嘗試不同的大小寫組合
+        std::string originalFilename(pMaterials[i].pTextureFilename);
+        std::vector<std::string> caseVariations;
+        
+        // 1. 全部小寫
+        std::string lowercase = originalFilename;
+        std::transform(lowercase.begin(), lowercase.end(), lowercase.begin(), ::tolower);
+        caseVariations.push_back(lowercase);
+        
+        // 2. 首字母大寫，其餘小寫 (e.g., "Horse3.bmp")
+        std::string titleCase = lowercase;
+        if (!titleCase.empty()) {
+          titleCase[0] = std::toupper(titleCase[0]);
+        }
+        caseVariations.push_back(titleCase);
+        
+        // 3. 全部大寫
+        std::string uppercase = originalFilename;
+        std::transform(uppercase.begin(), uppercase.end(), uppercase.begin(), ::toupper);
+        caseVariations.push_back(uppercase);
+        
+        // 嘗試每個變體
+        for (const auto& variant : caseVariations) {
+          if (variant != originalFilename) {  // 避免重複嘗試原始名稱
+            OutputDebugStringA(("Trying case variant: " + variant + "\n").c_str());
+            texHr = D3DXCreateTextureFromFileA(
+              m_device,
+              variant.c_str(),
+              &mc->m_Textures[i]);
+              
+            if (SUCCEEDED(texHr)) {
+              OutputDebugStringA(("Texture loaded successfully with case variant: " + variant + "\n").c_str());
+              break;
+            }
+          }
+        }
+        
+        if (FAILED(texHr)) {
+          // 如果所有變體都失敗，輸出最終錯誤
+          OutputDebugStringA("Failed to load texture with all case variations\n");
+        }
+      } else {
+        OutputDebugStringA("Texture loaded successfully\n");
+      }
     }
     mc->m_pMaterials[i] = pMaterials[i].MatD3D;
   }
@@ -91,18 +148,6 @@ STDMETHODIMP AllocateHierarchy::CreateMeshContainer(
     return hr;
   }
   memcpy(mc->m_pAdjacency->GetBufferPointer(), pAdjacency, numMaterials * 3 * sizeof(DWORD));
-
-  // 複製材質
-  mc->NumMaterials = numMaterials;
-  mc->m_pMaterials = new (std::nothrow) D3DMATERIAL9[numMaterials];
-  if (!mc->m_pMaterials) {
-    delete[] mc->m_pMaterials;
-    mc->MeshData.pMesh->Release();
-    delete mc;
-    return E_OUTOFMEMORY;
-  }
-  std::memcpy(mc->m_pMaterials, pMaterials, numMaterials * sizeof(D3DMATERIAL9));
-  mc->m_Textures.resize(numMaterials);
 
   *ppNewMeshContainer = reinterpret_cast<D3DXMESHCONTAINER*>(mc);
   return S_OK;

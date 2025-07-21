@@ -34,10 +34,12 @@ std::map<std::string, ModelData> XModelLoader::Load(
   Skeleton skel;
   skel.joints.reserve(frames.size());
   for (size_t i = 0; i < frames.size(); ++i) {
-    skel.joints.push_back({ frames[i]->Name, parents[i] });
+    std::string jointName = frames[i]->Name ? frames[i]->Name : "unnamed_joint_" + std::to_string(i);
+    skel.joints.push_back({ jointName, parents[i] });
   }
 
   std::map<std::string, ModelData> result;
+  int meshIndex = 0;
   for (auto* f : frames) {
     if (!f->pMeshContainer) continue;
     auto* mc = reinterpret_cast<MeshContainerEx*>(f->pMeshContainer);
@@ -45,7 +47,9 @@ std::map<std::string, ModelData> XModelLoader::Load(
     md.mesh = CreateSkinMesh(device, mc);
     md.skeleton = skel;
     md.animController = std::shared_ptr<ID3DXAnimationController>(animCtrl, [](auto*) {});
-    result[f->Name] = md;
+    
+    std::string meshName = f->Name ? f->Name : "mesh_" + std::to_string(meshIndex++);
+    result[meshName] = md;
   }
 
   alloc.DestroyFrame(reinterpret_cast<D3DXFRAME*>(root));

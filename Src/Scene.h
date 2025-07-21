@@ -29,11 +29,11 @@ public:
 protected:
     void SetState(SceneState state) override { state_ = state; }
     
-    // 子類需要實作的虛擬方法
-    virtual bool OnInitialize() = 0;      // 場景特定的初始化
-    virtual void OnUpdate(float deltaTime) = 0;  // 場景特定的更新
-    virtual void OnRender() = 0;          // 場景特定的渲染
-    virtual void OnCleanup() = 0;         // 場景特定的清理
+    // 子類需要實作的虛擬方法 (提供預設實作)
+    virtual bool OnInitialize() { return true; }  // 場景特定的初始化
+    virtual void OnUpdate(float deltaTime) {}     // 場景特定的更新
+    virtual void OnRender() {}                    // 場景特定的渲染
+    virtual void OnCleanup() {}                   // 場景特定的清理
     
     // 可選的覆寫方法
     virtual void OnSceneEnter() {}        // 場景進入時的額外處理

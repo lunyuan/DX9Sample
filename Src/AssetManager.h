@@ -53,12 +53,14 @@ public:
     
     // 具體載入方法
     std::shared_ptr<ModelData> LoadModel(const std::string& assetPath) override;
+    std::vector<std::shared_ptr<ModelData>> LoadAllModels(const std::string& assetPath) override;
     std::shared_ptr<IDirect3DTexture9> LoadTexture(const std::string& assetPath) override;
     
     std::string ResolveAssetPath(const std::string& assetPath, AssetType type) const override;
 
 protected:
     std::shared_ptr<ModelData> LoadModelImpl(const std::string& fullPath) override;
+    std::vector<std::shared_ptr<ModelData>> LoadAllModelsImpl(const std::string& fullPath);
     std::shared_ptr<IDirect3DTexture9> LoadTextureImpl(const std::string& fullPath) override;
 
 private:

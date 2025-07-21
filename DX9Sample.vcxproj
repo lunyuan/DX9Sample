@@ -82,6 +82,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -96,6 +97,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -110,6 +112,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalModuleDependencies>libfbxsdk.lib</AdditionalModuleDependencies>
     </ClCompile>
@@ -130,6 +133,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -139,20 +143,30 @@
   <ItemGroup>
     <ClCompile Include="Src\AllocateHierarchy.cpp" />
     <ClCompile Include="Src\AnimationPlayer.cpp" />
+    <ClCompile Include="Src\AssetManager.cpp" />
     <ClCompile Include="Src\CameraController.cpp" />
     <ClCompile Include="Src\D3DContext.cpp" />
     <ClCompile Include="Src\EffectManager.cpp" />
     <ClCompile Include="Src\EngineContext.cpp" />
+    <ClCompile Include="Src\EventManager.cpp" />
     <ClCompile Include="Src\Exporter.cpp" />
     <ClCompile Include="Src\FbxLoader.cpp" />
     <ClCompile Include="Src\FullScreenQuad.cpp" />
+    <ClCompile Include="Src\GameScene.cpp" />
+    <ClCompile Include="Src\PauseScene.cpp" />
+    <ClCompile Include="Src\SettingsScene.cpp" />
     <ClCompile Include="Src\GltfLoader.cpp" />
+    <ClCompile Include="Src\ImprovedTextureManager.cpp" />
     <ClCompile Include="Src\InputHandler.cpp" />
+    <ClCompile Include="Src\JsonConfigManager.cpp" />
     <ClCompile Include="Src\Loader.cpp" />
     <ClCompile Include="Src\main.cpp" />
     <ClCompile Include="Src\ModelManager.cpp" />
     <ClCompile Include="Src\RenderTargetManager.cpp" />
+    <ClCompile Include="Src\Scene.cpp" />
     <ClCompile Include="Src\Scene3D.cpp" />
+    <ClCompile Include="Src\SceneManager.cpp" />
+    <ClCompile Include="Src\ServiceLocator.cpp" />
     <ClCompile Include="Src\SkinMesh.cpp" />
     <ClCompile Include="Src\stb_image_impl.cpp" />
     <ClCompile Include="Src\TextureManager.cpp" />
@@ -163,39 +177,54 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Src\AnimationPlayer.h" />
+    <ClInclude Include="Src\AssetManager.h" />
     <ClInclude Include="Src\CameraController.h" />
     <ClInclude Include="Src\D3DContext.h" />
     <ClInclude Include="Src\DirectionalLight.h" />
     <ClInclude Include="Src\EffectManager.h" />
     <ClInclude Include="Src\EngineContext.h" />
+    <ClInclude Include="Src\EventManager.h" />
     <ClInclude Include="Src\Exporter.h" />
     <ClInclude Include="Src\FbxLoader.h" />
     <ClInclude Include="Src\FullScreenQuad.h" />
+    <ClInclude Include="Src\GameScene.h" />
+    <ClInclude Include="Src\PauseScene.h" />
+    <ClInclude Include="Src\SettingsScene.h" />
     <ClInclude Include="Src\GltfLoader.h" />
     <ClInclude Include="Src\ICameraController.h" />
     <ClInclude Include="Src\ID3DContext.h" />
     <ClInclude Include="Src\IEffectManager.h" />
     <ClInclude Include="Src\IEngineContext.h" />
+    <ClInclude Include="Src\IEventManager.h" />
+    <ClInclude Include="Src\IAssetManager.h" />
+    <ClInclude Include="Src\IConfigManager.h" />
     <ClInclude Include="Src\IFullScreenQuad.h" />
     <ClInclude Include="Src\IInputHandler.h" />
     <ClInclude Include="Src\IInputListener.h" />
+    <ClInclude Include="Src\ImprovedTextureManager.h" />
     <ClInclude Include="Src\ILight.h" />
     <ClInclude Include="Src\ILightManager.h" />
     <ClInclude Include="Src\IModelLoader.h" />
     <ClInclude Include="Src\IModelManager.h" />
     <ClInclude Include="Src\InputHandler.h" />
     <ClInclude Include="Src\IRenderTargetManager.h" />
+    <ClInclude Include="Src\IScene.h" />
+    <ClInclude Include="Src\ISceneManager.h" />
     <ClInclude Include="Src\IScene3D.h" />
     <ClInclude Include="Src\ITextureManager.h" />
     <ClInclude Include="Src\IUIInputListener.h" />
     <ClInclude Include="Src\IUIManager.h" />
     <ClInclude Include="Src\json.hpp" />
+    <ClInclude Include="Src\JsonConfigManager.h" />
     <ClInclude Include="Src\LightManager.h" />
     <ClInclude Include="Src\Loader.h" />
     <ClInclude Include="Src\ModelData.h" />
     <ClInclude Include="Src\ModelManager.h" />
     <ClInclude Include="Src\RenderTargetManager.h" />
+    <ClInclude Include="Src\Scene.h" />
     <ClInclude Include="Src\Scene3D.h" />
+    <ClInclude Include="Src\SceneManager.h" />
+    <ClInclude Include="Src\ServiceLocator.h" />
     <ClInclude Include="Src\SkinMesh.h" />
     <ClInclude Include="Src\Skeleton.h" />
     <ClInclude Include="Src\SkinMeshFactory.h" />

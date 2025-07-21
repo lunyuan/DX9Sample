@@ -10,6 +10,7 @@ public:
   ~CameraController();
   bool HandleMessage(const MSG& msg) override;
   void Update(float deltaTime) override;
+  void SetupCamera() override;
   XMMATRIX GetViewMatrix() const override;
   XMMATRIX GetProjMatrix(float aspect) const override;
 
@@ -40,6 +41,5 @@ private:
   static constexpr float kMaxDist = 50.0f;
 
   // 每幀或初始化時呼叫
-  void SetupCamera();
   void SetupMatrices();
 };

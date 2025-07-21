@@ -9,6 +9,8 @@ struct IAssetManager;
 struct IUIManager;
 struct IEventManager;
 struct IConfigManager;
+struct ISceneManager;
+struct ICameraController;
 
 // 場景狀態
 enum class SceneState {
@@ -28,7 +30,12 @@ struct IServiceLocator {
     virtual IUIManager* GetUIManager() const = 0;
     virtual IEventManager* GetEventManager() const = 0;
     virtual IConfigManager* GetConfigManager() const = 0;
+    virtual ISceneManager* GetSceneManager() const = 0;
     virtual IDirect3DDevice9* GetDevice() const = 0;
+    virtual ICameraController* GetCameraController() const = 0;
+    
+    // 檢查服務是否有效（未在關閉狀態）
+    virtual bool IsValid() const = 0;
 };
 
 // 場景介面

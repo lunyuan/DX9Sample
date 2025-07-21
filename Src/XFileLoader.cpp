@@ -319,6 +319,13 @@ bool XFileLoader::Load(const std::wstring& file, IDirect3DDevice9* dev, SkinMesh
   );
   if (FAILED(hr) || !rootFrame) {
     std::wcerr << L"Failed to load .x skeleton: " << file << std::endl;
+    
+    // 創建頂點和索引緩衝區 (即使沒有骨架也要創建)
+    if (!mesh.CreateBuffers(dev)) {
+      std::cerr << "Failed to create vertex/index buffers for mesh (no skeleton)" << std::endl;
+      return false;
+    }
+    
     return true; // 只有 mesh 時也算成功, 如果沒有骨架，直接返回
   }
 
@@ -371,6 +378,12 @@ bool XFileLoader::Load(const std::wstring& file, IDirect3DDevice9* dev, SkinMesh
 
   // 6. 清除 frame tree
   alloc.DestroyFrame(rootFrame);
+
+  // 創建頂點和索引緩衝區
+  if (!mesh.CreateBuffers(dev)) {
+    std::cerr << "Failed to create vertex/index buffers for mesh" << std::endl;
+    return false;
+  }
 
   return true;
 }

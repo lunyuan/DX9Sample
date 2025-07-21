@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ISceneManager.h"
+#include "IInputHandler.h"
 #include <unordered_map>
 #include <vector>
 #include <memory>
@@ -28,7 +29,7 @@ struct SceneStackItem {
     SceneStackItem(std::unique_ptr<IScene> s) : scene(std::move(s)) {}
 };
 
-class SceneManager : public ISceneManager {
+class SceneManager : public ISceneManager, public IInputListener {
 public:
     SceneManager();
     ~SceneManager();
@@ -62,6 +63,9 @@ public:
     void Cleanup() override;
     
     void PrintSceneStack() const override;
+    
+    // IInputListener 介面實作
+    bool HandleMessage(const MSG& msg) override;
 
 private:
     // 內部輔助方法
@@ -99,6 +103,7 @@ private:
     
     // 狀態
     bool initialized_;
+    bool isShuttingDown_;  // 新增: 標記是否正在關閉
     
     // 除錯
     bool enableDebugLogging_;

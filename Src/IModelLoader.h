@@ -5,8 +5,7 @@
 #include <string>
 #include "ModelData.h"  
 
-class IModelLoader {
-public:
+struct IModelLoader {
   virtual ~IModelLoader() = default;
   
   // 載入檔案中的所有模型
