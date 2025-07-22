@@ -70,26 +70,13 @@ std::map<std::string, std::shared_ptr<ModelData>> XModelEnhanced::LoadWithSepara
         // Convert mesh to SkinMesh format
         ConvertToSkinMesh(meshInfo, modelData->mesh, device);
         
-        // Clear textures if not using original textures (default behavior)
-        if (!modelData->useOriginalTextures) {
-            // Clear all material textures but keep material data
-            for (auto& material : modelData->mesh.materials) {
-                if (material.tex) {
-                    material.tex->Release();
-                    material.tex = nullptr;
-                }
-            }
-            // Clear mesh texture
-            if (modelData->mesh.texture) {
-                modelData->mesh.texture->Release();
-                modelData->mesh.texture = nullptr;
-            }
-            
-            char debugMsg[256];
-            sprintf_s(debugMsg, "XModelEnhanced: Cleared model textures for %s (materials count: %zu, useOriginalTextures=false)\n", 
-                      modelName.c_str(), modelData->mesh.materials.size());
-            OutputDebugStringA(debugMsg);
-        }
+        // Keep textures - don't clear them
+        // The useOriginalTextures flag should control whether to override with SetTexture later,
+        // not whether to keep the loaded textures
+        char debugMsg[256];
+        sprintf_s(debugMsg, "XModelEnhanced: Keeping loaded textures for %s (materials count: %zu)\n", 
+                  modelName.c_str(), modelData->mesh.materials.size());
+        OutputDebugStringA(debugMsg);
         
         // Assign skeleton (shared among all meshes from the same file)
         modelData->skeleton = skeleton;
@@ -225,6 +212,7 @@ void XModelEnhanced::CollectMeshes(
             if (meshContainer->pMaterials && meshContainer->NumMaterials > 0) {
                 info.materials.resize(meshContainer->NumMaterials);
                 info.textures.resize(meshContainer->NumMaterials);
+                info.textureFileNames.resize(meshContainer->NumMaterials);
                 
                 sprintf_s(debugMsg, "XModelEnhanced: MeshContainer has %d materials\n", meshContainer->NumMaterials);
                 OutputDebugStringA(debugMsg);
@@ -240,6 +228,12 @@ void XModelEnhanced::CollectMeshes(
                             info.textures[i]->AddRef(); // 增加引用計數
                             char debugMsg[256];
                             sprintf_s(debugMsg, "XModelEnhanced: Found texture for material %d (ptr: %p)\n", i, info.textures[i]);
+                            OutputDebugStringA(debugMsg);
+                        }
+                        // 取得檔名
+                        if (i < mc->m_TextureFileNames.size() && !mc->m_TextureFileNames[i].empty()) {
+                            info.textureFileNames[i] = mc->m_TextureFileNames[i];
+                            sprintf_s(debugMsg, "XModelEnhanced: Texture filename: %s\n", info.textureFileNames[i].c_str());
                             OutputDebugStringA(debugMsg);
                         }
                     } else {
@@ -447,6 +441,10 @@ void XModelEnhanced::ConvertToSkinMesh(
     for (size_t i = 0; i < meshInfo.materials.size(); ++i) {
         outMesh.materials[i].mat = meshInfo.materials[i];
         outMesh.materials[i].tex = meshInfo.textures[i];
+        // 設定檔名（如果有的話）
+        if (i < meshInfo.textureFileNames.size()) {
+            outMesh.materials[i].textureFileName = meshInfo.textureFileNames[i];
+        }
     }
     
     // Apply transformation to vertices

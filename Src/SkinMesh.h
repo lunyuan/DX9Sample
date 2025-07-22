@@ -36,6 +36,7 @@ struct VertexSimple {
 struct Material {
   D3DMATERIAL9        mat;      // 漫反射／鏡面／環境等材質參數
   IDirect3DTexture9* tex = nullptr;  // 對應的貼圖 (若有)
+  std::string        textureFileName; // 貼圖檔名（用於導出）
 };
 
 

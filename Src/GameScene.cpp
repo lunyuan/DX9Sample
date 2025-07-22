@@ -16,6 +16,7 @@
 #include "AnimationPlayer.h"
 #include "UISerializer.h"
 #include <filesystem>
+#include "FbxSaver.h"
 
 GameScene::GameScene() 
     : Scene("GameScene")
@@ -745,15 +746,25 @@ void GameScene::LoadGameAssets() {
     
     // 載入遊戲資產
     try {
-        // 載入 test1.x，包含 7 匹馬 (horse01 到 horse07)
-        auto models = assetManager->LoadAllModels("test1.x");
-        if (models.empty()) {
-            // 如果載入失敗，嘗試 test.x (只有 1 匹馬)
-            OutputDebugStringA("GameScene: test1.x 未找到或空白，嘗試 test.x\n");
-            models = assetManager->LoadAllModels("test.x");
-        }
+        // 載入 horse_group.fbx
+        // 直接載入 FBX 檔案 - 現在支援紋理載入
+        auto models = assetManager->LoadAllModels("horse_group.fbx");
+        
         if (!models.empty()) {
+            std::cout << "GameScene: Successfully loaded " << models.size() << " models from horse_group.fbx" << std::endl;
+            
+            // 顯示每個載入的模型資訊
+            for (size_t i = 0; i < models.size(); ++i) {
+                std::cout << "  FBX Model " << i << ": " 
+                         << models[i]->mesh.vertices.size() << " vertices, "
+                         << models[i]->mesh.indices.size() / 3 << " triangles" << std::endl;
+            }
+            
             loadedModels_ = models;
+        } else {
+            std::cerr << "GameScene: Failed to load horse_group.fbx" << std::endl;
+        }
+        if (!loadedModels_.empty()) {
             
             // 顯示實際載入的模型數量
             char debugMsg[256];
@@ -779,7 +790,7 @@ void GameScene::LoadGameAssets() {
             // Save models in different formats for testing
             // SaveModelsInDifferentFormats(models);  // TODO: Implement when savers are ready
             
-            for (const auto& model : models) {
+            for (const auto& model : loadedModels_) {
                 if (model) {
                     std::cout << "  - Model with " << model->mesh.vertices.size() << " vertices, " 
                               << model->mesh.indices.size()/3 << " triangles" << std::endl;
@@ -789,50 +800,40 @@ void GameScene::LoadGameAssets() {
             std::cerr << "GameScene: Failed to load models from test.x" << std::endl;
         }
         
-        // 使用 Horse4.bmp 作為貼圖
-        auto texture = assetManager->LoadTexture("Horse4.bmp");
-        if (!texture) {
-            // 如果找不到，嘗試載入 Horse3.bmp
-            texture = assetManager->LoadTexture("Horse3.bmp");
-            if (!texture) {
-                // 最後嘗試載入 test.bmp
-                texture = assetManager->LoadTexture("test.bmp");
+        // 檢查 FBX 檔案載入後的貼圖狀態
+        std::cout << "GameScene: Checking textures loaded from FBX file..." << std::endl;
+        
+        int modelIndex = 0;
+        for (auto& model : loadedModels_) {
+            if (model) {
+                std::cout << "\nModel " << modelIndex++ << ":" << std::endl;
+                std::cout << "  Materials count: " << model->mesh.materials.size() << std::endl;
+                std::cout << "  useOriginalTextures: " << (model->useOriginalTextures ? "true" : "false") << std::endl;
+                
+                // 檢查每個材質的貼圖
+                for (size_t i = 0; i < model->mesh.materials.size(); ++i) {
+                    const auto& mat = model->mesh.materials[i];
+                    std::cout << "  Material " << i << ":" << std::endl;
+                    std::cout << "    Texture pointer: " << mat.tex << std::endl;
+                    std::cout << "    Diffuse color: (" 
+                              << mat.mat.Diffuse.r << ", " 
+                              << mat.mat.Diffuse.g << ", " 
+                              << mat.mat.Diffuse.b << ", " 
+                              << mat.mat.Diffuse.a << ")" << std::endl;
+                }
+                
+                // 檢查 mesh.texture (全域貼圖)
+                std::cout << "  Global texture (mesh.texture): " << model->mesh.texture << std::endl;
             }
         }
         
-        if (texture) {
-            loadedTexture_ = texture;
-            std::cout << "GameScene: Texture loaded successfully" << std::endl;
-            
-            // 應用貼圖到所有載入的模型
-            auto* device = services_->GetDevice();
-            if (device) {
-                for (auto& model : loadedModels_) {
-                    if (model) {
-                        char debugMsg[256];
-                        sprintf_s(debugMsg, "GameScene: Before SetTexture - materials count: %zu\n", 
-                                  model->mesh.materials.size());
-                        OutputDebugStringA(debugMsg);
-                        
-                        // 使用 SetTexture 方法設定貼圖
-                        model->mesh.SetTexture(device, "Horse4.bmp");
-                        
-                        sprintf_s(debugMsg, "GameScene: After SetTexture - texture: %p\n", 
-                                  model->mesh.texture);
-                        OutputDebugStringA(debugMsg);
-                    }
-                }
-            }
-        } else {
-            std::cerr << "GameScene: Warning: No texture loaded" << std::endl;
-        }
         
         // 發送資產載入事件
         Events::AssetLoaded assetEvent;
-        assetEvent.assetPath = "test.x";
+        assetEvent.assetPath = "horse_group.fbx";
         assetEvent.assetType = "model";
-        assetEvent.success = (!models.empty());
-        assetEvent.errorMessage = models.empty() ? "Failed to load models" : "";
+        assetEvent.success = (!loadedModels_.empty());
+        assetEvent.errorMessage = loadedModels_.empty() ? "Failed to load models" : "";
         Emit(assetEvent);
                    
     } catch (const std::exception& e) {

@@ -15,10 +15,11 @@ public:
         std::string name;
         std::string parentName;
         D3DXMATRIX transform;
-        ID3DXMesh* mesh;
+        ID3DXMesh* mesh = nullptr;
         std::vector<D3DMATERIAL9> materials;
         std::vector<IDirect3DTexture9*> textures;
-        ID3DXSkinInfo* skinInfo;
+        std::vector<std::string> textureFileNames;
+        ID3DXSkinInfo* skinInfo = nullptr;
     };
     
     // Load all meshes from X file with proper separation

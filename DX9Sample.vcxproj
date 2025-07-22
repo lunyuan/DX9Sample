@@ -108,7 +108,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;x64;_WINDOWS;_UNICODE;UNICODE;DEBUG;_CRT_SECURE_NO_WARNINGS%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_DEBUG;x64;_WINDOWS;_UNICODE;UNICODE;DEBUG;_CRT_SECURE_NO_WARNINGS;FBXSDK_STATIC%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
@@ -151,6 +151,7 @@
     <ClCompile Include="Src\EventManager.cpp" />
     <ClCompile Include="Src\Exporter.cpp" />
     <ClCompile Include="Src\FbxLoader.cpp" />
+    <ClCompile Include="Src\FbxSaver.cpp" />
     <ClCompile Include="Src\FullScreenQuad.cpp" />
     <ClCompile Include="Src\GameScene.cpp" />
     <ClCompile Include="Src\PauseScene.cpp" />
@@ -187,6 +188,7 @@
     <ClInclude Include="Src\EventManager.h" />
     <ClInclude Include="Src\Exporter.h" />
     <ClInclude Include="Src\FbxLoader.h" />
+    <ClInclude Include="Src\FbxSaver.h" />
     <ClInclude Include="Src\FullScreenQuad.h" />
     <ClInclude Include="Src\GameScene.h" />
     <ClInclude Include="Src\PauseScene.h" />

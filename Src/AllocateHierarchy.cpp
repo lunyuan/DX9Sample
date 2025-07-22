@@ -79,6 +79,7 @@ STDMETHODIMP AllocateHierarchy::CreateMeshContainer(
   // 儲存材質與貼圖名稱
   mc->NumMaterials = numMaterials;
   mc->m_Textures.resize(numMaterials);
+  mc->m_TextureFileNames.resize(numMaterials);
   mc->m_pMaterials = new D3DMATERIAL9[numMaterials];
   
   // 設定基類的 pMaterials 指標
@@ -87,10 +88,12 @@ STDMETHODIMP AllocateHierarchy::CreateMeshContainer(
   for (UINT i = 0; i < numMaterials; i++) {
     // 複製材質資料
     mc->pMaterials[i].MatD3D = pMaterials[i].MatD3D;
-    mc->pMaterials[i].pTextureFilename = nullptr;  // 我們不需要檔名，已經載入貼圖
+    mc->pMaterials[i].pTextureFilename = nullptr;  // DirectX 不需要，但我們保存到 m_TextureFileNames
     mc->m_pMaterials[i] = pMaterials[i].MatD3D;
     // 載入材質中的貼圖
     if (pMaterials[i].pTextureFilename != nullptr) {
+      // 保存檔名
+      mc->m_TextureFileNames[i] = pMaterials[i].pTextureFilename;
       char debugMsg[512];
       sprintf_s(debugMsg, "AllocateHierarchy: Attempting to load texture: %s\n", pMaterials[i].pTextureFilename);
       OutputDebugStringA(debugMsg);

@@ -16,6 +16,7 @@ struct MeshContainerEx : public D3DXMESHCONTAINER {
   ID3DXSkinInfo* m_pSkinInfo = nullptr;       // 骨架動畫資訊
   D3DMATERIAL9* m_pMaterials = nullptr;
   std::vector<IDirect3DTexture9*> m_Textures{};     // 材質貼圖
+  std::vector<std::string> m_TextureFileNames{};     // 貼圖檔名
   ID3DXBuffer* m_pAdjacency = nullptr;      // adjacency info
   ID3DXBuffer* m_pBoneOffsetMatrices = nullptr; // 骨骼偏移矩陣
   ID3DXBuffer* m_pBoneCombinationBuf = nullptr; // 組合矩陣

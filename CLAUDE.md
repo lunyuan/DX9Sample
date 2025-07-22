@@ -67,6 +67,14 @@ Animation system uses skeletal animation with `Skeleton` and `AnimationPlayer` c
 - Default camera distance: 50.0f (adjustable with mouse controls)
 - Model scale: 10.0f for proper visibility
 - Supports multi-mesh X files with proper separation
+- Textures are loaded and preserved correctly
+
+**FBX File Loading Notes:**
+- FBX texture loading is now fully implemented (2025-07-23)
+- Textures are loaded from relative paths or test/ directory
+- Use `LoadAllModels("model.fbx")` to load with textures
+- Supports conversion from X to FBX with texture preservation
+- See `doc/FBX_TEXTURE_LOADING_IMPLEMENTATION.md` for technical details
 
 ### Key Patterns
 
@@ -143,7 +151,7 @@ The `doc/` directory contains comprehensive documentation organized by category.
 - **Architecture**: `ARCHITECTURE_ANALYSIS.md`, `CURRENT_ARCHITECTURE.md`, `FACTORY_FUNCTIONS_AUDIT.md`
 - **Build & Setup**: `BUILD_INSTRUCTIONS.md`, `TESTING_INSTRUCTIONS.md`
 - **System Guides**: `EVENT_SYSTEM_USAGE.md`, `SCENE_MANAGER_USAGE.md`, `ASSET_MANAGER_USAGE.md`, `UI_SYSTEM_USAGE.md`
-- **Model System**: `MODEL_LOADER_ANALYSIS.md`, `MODEL_LOADING_EXAMPLES.md`, `X_FILE_MULTI_OBJECT_LOADING.md`
+- **Model System**: `MODEL_LOADER_ANALYSIS.md`, `MODEL_LOADING_EXAMPLES.md`, `X_FILE_MULTI_OBJECT_LOADING.md`, `FBX_TEXTURE_LOADING_IMPLEMENTATION.md`
 - **Implementation Details**: `CAMERA_FIX.md`, `TEXTURE_MANAGER_ARCHITECTURE.md`, `UI_DRAGGING_STATUS.md`
 
 These documents provide detailed insights into the codebase structure, implementation decisions, and development process.

@@ -7,6 +7,7 @@
 #include <d3dx9.h>
 #include "AnimationPlayer.h"
 #include "SkinMeshFactory.h"
+#include <filesystem>
 
 // Need access to InitVertexDecl
 void InitVertexDecl(IDirect3DDevice9* dev);
@@ -53,31 +54,76 @@ std::map<std::string, ModelData> FbxLoader::Load(const std::filesystem::path& fi
         return result;
     }
     
-    // Create model data
-    ModelData modelData;
+    // Check if root has multiple mesh children (from SaveAll)
+    int meshNodeCount = 0;
+    std::vector<FbxNode*> meshNodes;
     
-    // Extract skeleton first
-    ExtractSkeleton(root, modelData.skeleton);
-    
-    // Extract animations
-    ExtractAnimations(scene, modelData.skeleton);
-    
-    // Convert nodes to mesh
-    ConvertNode(root, modelData.mesh, modelData.skeleton, device);
-    
-    // Create buffers after all mesh data is collected
-    if (!modelData.mesh.vertices.empty()) {
-        if (!modelData.mesh.CreateBuffers(device)) {
-            std::cerr << "FBX: Failed to create vertex/index buffers" << std::endl;
+    // Find all nodes with mesh attributes at the top level
+    for (int i = 0; i < root->GetChildCount(); ++i) {
+        FbxNode* child = root->GetChild(i);
+        if (child && child->GetNodeAttribute() && 
+            child->GetNodeAttribute()->GetAttributeType() == FbxNodeAttribute::eMesh) {
+            meshNodes.push_back(child);
+            meshNodeCount++;
         }
     }
     
-    // Note: Animation controller would be created here if needed
-    // modelData.animController = ...;
-    
-    // Add to result with the base filename as key
-    std::string modelName = file.stem().string();
-    result[modelName] = std::move(modelData);
+    // If we have multiple top-level mesh nodes, process each separately
+    if (meshNodeCount > 1) {
+        std::cout << "FBX: Found " << meshNodeCount << " separate models in file" << std::endl;
+        
+        for (size_t i = 0; i < meshNodes.size(); ++i) {
+            FbxNode* meshNode = meshNodes[i];
+            ModelData modelData;
+            
+            // Extract skeleton for this model
+            ExtractSkeleton(meshNode, modelData.skeleton);
+            
+            // Extract animations
+            ExtractAnimations(scene, modelData.skeleton);
+            
+            // Convert this node only
+            ConvertNode(meshNode, modelData.mesh, modelData.skeleton, device, file);
+            
+            // Create buffers
+            if (!modelData.mesh.vertices.empty()) {
+                if (!modelData.mesh.CreateBuffers(device)) {
+                    std::cerr << "FBX: Failed to create buffers for model " << i << std::endl;
+                }
+            }
+            
+            // Use node name or generate one
+            std::string modelName = meshNode->GetName();
+            if (modelName.empty()) {
+                modelName = file.stem().string() + "_" + std::to_string(i);
+            }
+            
+            result[modelName] = std::move(modelData);
+        }
+    } else {
+        // Single model case - process as before
+        ModelData modelData;
+        
+        // Extract skeleton first
+        ExtractSkeleton(root, modelData.skeleton);
+        
+        // Extract animations
+        ExtractAnimations(scene, modelData.skeleton);
+        
+        // Convert nodes to mesh
+        ConvertNode(root, modelData.mesh, modelData.skeleton, device, file);
+        
+        // Create buffers after all mesh data is collected
+        if (!modelData.mesh.vertices.empty()) {
+            if (!modelData.mesh.CreateBuffers(device)) {
+                std::cerr << "FBX: Failed to create vertex/index buffers" << std::endl;
+            }
+        }
+        
+        // Add to result with the base filename as key
+        std::string modelName = file.stem().string();
+        result[modelName] = std::move(modelData);
+    }
     
     // Cleanup
     scene->Destroy();
@@ -116,7 +162,7 @@ bool FbxLoader::LoadScene(const std::string& path, FbxManager* mgr, FbxScene* sc
     return true;
 }
 
-void FbxLoader::ConvertNode(FbxNode* node, SkinMesh& mesh, Skeleton& skel, IDirect3DDevice9* device) const {
+void FbxLoader::ConvertNode(FbxNode* node, SkinMesh& mesh, Skeleton& skel, IDirect3DDevice9* device, const std::filesystem::path& fbxFilePath) const {
     if (!node) return;
     
     // Check if this node has a mesh
@@ -125,13 +171,13 @@ void FbxLoader::ConvertNode(FbxNode* node, SkinMesh& mesh, Skeleton& skel, IDire
         FbxMesh* fbxMesh = node->GetMesh();
         if (fbxMesh) {
             ExtractMeshData(fbxMesh, mesh, device);
-            ExtractMaterials(node, mesh, device);
+            ExtractMaterials(node, mesh, device, fbxFilePath);
         }
     }
     
     // Process children
     for (int i = 0; i < node->GetChildCount(); ++i) {
-        ConvertNode(node->GetChild(i), mesh, skel, device);
+        ConvertNode(node->GetChild(i), mesh, skel, device, fbxFilePath);
     }
 }
 
@@ -328,7 +374,7 @@ void FbxLoader::ExtractMeshData(FbxMesh* fbxMesh, SkinMesh& mesh, IDirect3DDevic
     // Don't create buffers here - wait until all meshes are processed
 }
 
-void FbxLoader::ExtractMaterials(FbxNode* node, SkinMesh& mesh, IDirect3DDevice9* device) const {
+void FbxLoader::ExtractMaterials(FbxNode* node, SkinMesh& mesh, IDirect3DDevice9* device, const std::filesystem::path& fbxFilePath) const {
     int materialCount = node->GetMaterialCount();
     
     // Don't clear materials - append to existing
@@ -349,9 +395,119 @@ void FbxLoader::ExtractMaterials(FbxNode* node, SkinMesh& mesh, IDirect3DDevice9
         material.mat.Emissive = D3DXCOLOR(0.0f, 0.0f, 0.0f, 1.0f);
         material.mat.Power = 10.0f;
         
-        // Extract texture - simplified version to avoid FBX SDK static member issues
-        // TODO: Implement texture extraction when FBX SDK is properly configured
+        // Extract texture using workaround method
         material.tex = nullptr;
+        
+        char debugMsg[512];
+        sprintf_s(debugMsg, "FbxLoader: Processing material %d: %s\n", i, fbxMaterial->GetName());
+        OutputDebugStringA(debugMsg);
+        
+        // Workaround: Try to find diffuse property without using static members
+        try {
+            FbxProperty prop = fbxMaterial->FindProperty("DiffuseColor");
+            if (prop.IsValid()) {
+                sprintf_s(debugMsg, "FbxLoader: Found DiffuseColor property for material %d\n", i);
+                OutputDebugStringA(debugMsg);
+                // Get source objects without template to avoid ClassId issues
+                int srcCount = prop.GetSrcObjectCount();
+                sprintf_s(debugMsg, "FbxLoader: DiffuseColor has %d source objects\n", srcCount);
+                OutputDebugStringA(debugMsg);
+                
+                for (int j = 0; j < srcCount; ++j) {
+                    FbxObject* obj = prop.GetSrcObject(j);
+                    if (obj) {
+                        sprintf_s(debugMsg, "FbxLoader: Source object %d type: %s\n", j, obj->GetClassId().GetName());
+                        OutputDebugStringA(debugMsg);
+                        
+                        // Check if it's a texture object by name
+                        std::string objTypeName = obj->GetClassId().GetName();
+                        if (objTypeName == "FbxFileTexture") {
+                            OutputDebugStringA("FbxLoader: Found FbxFileTexture object\n");
+                            
+                            // Try direct cast first (safer than dynamic_cast in this context)
+                            FbxFileTexture* fileTexture = static_cast<FbxFileTexture*>(obj);
+                            if (fileTexture) {
+                                try {
+                                    // Method 1: Try GetFileName directly
+                                    const char* fileName = fileTexture->GetRelativeFileName();
+                                    if (!fileName || strlen(fileName) == 0) {
+                                        fileName = fileTexture->GetFileName();
+                                    }
+                                    
+                                    if (fileName && strlen(fileName) > 0) {
+                                        OutputDebugStringA("FbxLoader: Found texture file via method: ");
+                                        OutputDebugStringA(fileName);
+                                        OutputDebugStringA("\n");
+                                        
+                                        // Load texture using various path strategies
+                                        LoadTextureFromFile(fileName, &material.tex, device, fbxFilePath);
+                                        break; // Only use first texture
+                                    }
+                                } catch (...) {
+                                    OutputDebugStringA("FbxLoader: Exception using direct methods\n");
+                                }
+                            }
+                            
+                            try {
+                                // Try to get filename property with different names
+                                const char* propNames[] = {"FileName", "Filename", "Path", "RelativeFilename", "AbsoluteUrl", "Url"};
+                                FbxProperty fileNameProp;
+                                
+                                for (const char* propName : propNames) {
+                                    fileNameProp = obj->FindProperty(propName);
+                                    if (fileNameProp.IsValid()) {
+                                        sprintf_s(debugMsg, "FbxLoader: Found property '%s'\n", propName);
+                                        OutputDebugStringA(debugMsg);
+                                        break;
+                                    }
+                                }
+                                
+                                if (fileNameProp.IsValid()) {
+                                    FbxString fileName = fileNameProp.Get<FbxString>();
+                                    if (fileName.GetLen() > 0) {
+                                        OutputDebugStringA("FbxLoader: Found texture file: ");
+                                        OutputDebugStringA(fileName.Buffer());
+                                        OutputDebugStringA("\n");
+                                        
+                                        // Load texture using various path strategies
+                                        LoadTextureFromFile(fileName.Buffer(), &material.tex, device, fbxFilePath);
+                                        break; // Only use first texture
+                                    }
+                                } else {
+                                    OutputDebugStringA("FbxLoader: No filename property found, listing all properties:\n");
+                                    
+                                    // List all properties for debugging
+                                    FbxProperty prop = obj->GetFirstProperty();
+                                    while (prop.IsValid()) {
+                                        sprintf_s(debugMsg, "  Property: %s\n", prop.GetName());
+                                        OutputDebugStringA(debugMsg);
+                                        prop = obj->GetNextProperty(prop);
+                                    }
+                                }
+                            } catch (...) {
+                                OutputDebugStringA("FbxLoader: Exception getting texture filename\n");
+                            }
+                        }
+                    }
+                }
+            } else {
+                sprintf_s(debugMsg, "FbxLoader: No DiffuseColor property found for material %d\n", i);
+                OutputDebugStringA(debugMsg);
+                
+                // Try alternative property names
+                const char* propNames[] = {"Diffuse", "DiffuseTexture", "Texture", "DiffuseMap"};
+                for (const char* propName : propNames) {
+                    prop = fbxMaterial->FindProperty(propName);
+                    if (prop.IsValid()) {
+                        sprintf_s(debugMsg, "FbxLoader: Found property %s\n", propName);
+                        OutputDebugStringA(debugMsg);
+                        break;
+                    }
+                }
+            }
+        } catch (...) {
+            OutputDebugStringA("FbxLoader: Exception while extracting texture\n");
+        }
         
         mesh.materials.push_back(material);
     }
@@ -477,6 +633,59 @@ void FbxLoader::ExtractSkinWeights(FbxMesh* fbxMesh, std::vector<std::vector<std
     for (const auto& weights : skinWeights) {
         if (!weights.empty()) skinnedVertices++;
     }
+}
+
+void FbxLoader::LoadTextureFromFile(const char* fileName, IDirect3DTexture9** outTexture, IDirect3DDevice9* device, const std::filesystem::path& fbxFilePath) const {
+    if (!fileName || !outTexture || !device) return;
+    
+    std::filesystem::path texturePath(fileName);
+    char debugMsg[512];
+    
+    // Strategy 1: Try absolute path
+    if (texturePath.is_absolute() && std::filesystem::exists(texturePath)) {
+        HRESULT hr = D3DXCreateTextureFromFileA(device, texturePath.string().c_str(), outTexture);
+        if (SUCCEEDED(hr)) {
+            sprintf_s(debugMsg, "FbxLoader: Loaded texture from absolute path: %s\n", texturePath.string().c_str());
+            OutputDebugStringA(debugMsg);
+            return;
+        }
+    }
+    
+    // Strategy 2: Try relative to FBX file
+    std::filesystem::path fbxDir = fbxFilePath.parent_path();
+    std::filesystem::path relativePath = fbxDir / texturePath.filename();
+    if (std::filesystem::exists(relativePath)) {
+        HRESULT hr = D3DXCreateTextureFromFileA(device, relativePath.string().c_str(), outTexture);
+        if (SUCCEEDED(hr)) {
+            sprintf_s(debugMsg, "FbxLoader: Loaded texture from FBX directory: %s\n", relativePath.string().c_str());
+            OutputDebugStringA(debugMsg);
+            return;
+        }
+    }
+    
+    // Strategy 3: Try in test directory
+    std::filesystem::path testPath = "test" / texturePath.filename();
+    if (std::filesystem::exists(testPath)) {
+        HRESULT hr = D3DXCreateTextureFromFileA(device, testPath.string().c_str(), outTexture);
+        if (SUCCEEDED(hr)) {
+            sprintf_s(debugMsg, "FbxLoader: Loaded texture from test/: %s\n", testPath.string().c_str());
+            OutputDebugStringA(debugMsg);
+            return;
+        }
+    }
+    
+    // Strategy 4: Try just filename in current directory
+    if (std::filesystem::exists(texturePath.filename())) {
+        HRESULT hr = D3DXCreateTextureFromFileA(device, texturePath.filename().string().c_str(), outTexture);
+        if (SUCCEEDED(hr)) {
+            sprintf_s(debugMsg, "FbxLoader: Loaded texture from current dir: %s\n", texturePath.filename().string().c_str());
+            OutputDebugStringA(debugMsg);
+            return;
+        }
+    }
+    
+    sprintf_s(debugMsg, "FbxLoader: Failed to load texture: %s\n", fileName);
+    OutputDebugStringA(debugMsg);
 }
 
 void FbxLoader::ExtractAnimations(FbxScene* scene, Skeleton& skel) const {
