@@ -3,6 +3,7 @@
 #include <string>
 #include <windowsx.h>  // For GET_X_LPARAM and GET_Y_LPARAM
 #include "UICoordinateFix.h"
+#include <iostream>
 
 // Factory 函式實作
 std::unique_ptr<IUIManager> CreateUIManager(ITextureManager* textureManager) {
@@ -16,17 +17,31 @@ UIManager::UIManager(ITextureManager* textureManager)
 }
 
 STDMETHODIMP UIManager::Init(IDirect3DDevice9* dev) {
-  if (!dev) return E_INVALIDARG;
+  if (!dev) {
+    std::cerr << "UIManager::Init failed: Invalid device pointer" << std::endl;
+    return E_INVALIDARG;
+  }
   HRESULT hr = D3DXCreateFont(dev, 24, 0, FW_NORMAL, 0, FALSE, DEFAULT_CHARSET,
     OUT_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE,
     L"Arial", &font_);
-  if (FAILED(hr)) return hr;
+  if (FAILED(hr)) {
+    std::cerr << "UIManager::Init failed: Could not create font" << std::endl;
+    return hr;
+  }
   hr = D3DXCreateSprite(dev, &sprite_);
+  if (FAILED(hr)) {
+    std::cerr << "UIManager::Init failed: Could not create sprite" << std::endl;
+  }
   return hr;
 }
 
 STDMETHODIMP UIManager::Render(IDirect3DDevice9* dev) {
-  if (!dev || !font_ || !sprite_) return E_POINTER;
+  if (!dev || !font_ || !sprite_) {
+    if (!dev) std::cerr << "UIManager::Render failed: Invalid device pointer" << std::endl;
+    if (!font_) std::cerr << "UIManager::Render failed: Font not initialized" << std::endl;
+    if (!sprite_) std::cerr << "UIManager::Render failed: Sprite not initialized" << std::endl;
+    return E_POINTER;
+  }
   
   
   SortElementsByLayer();
@@ -59,72 +74,7 @@ STDMETHODIMP UIManager::Render(IDirect3DDevice9* dev) {
   D3DXMatrixIdentity(&identityMatrix);
   sprite_->SetTransform(&identityMatrix);
   
-  // 診斷輸出視窗和視圖設定
-  static bool diagnosticShown = false;
-  if (!diagnosticShown) {
-    diagnosticShown = true;
-    
-    // 獲取當前的變換矩陣
-    D3DXMATRIX currentTransform;
-    sprite_->GetTransform(&currentTransform);
-    
-    char debugMsg[512];
-    sprintf_s(debugMsg, "Sprite Transform Matrix:\n  [%.3f, %.3f, %.3f, %.3f]\n  [%.3f, %.3f, %.3f, %.3f]\n  [%.3f, %.3f, %.3f, %.3f]\n  [%.3f, %.3f, %.3f, %.3f]\n",
-              currentTransform._11, currentTransform._12, currentTransform._13, currentTransform._14,
-              currentTransform._21, currentTransform._22, currentTransform._23, currentTransform._24,
-              currentTransform._31, currentTransform._32, currentTransform._33, currentTransform._34,
-              currentTransform._41, currentTransform._42, currentTransform._43, currentTransform._44);
-    OutputDebugStringA(debugMsg);
-    
-    // 獲取視圖設定
-    D3DVIEWPORT9 viewport;
-    if (SUCCEEDED(dev->GetViewport(&viewport))) {
-      char debugMsg[256];
-      sprintf_s(debugMsg, "D3D Viewport: X=%d, Y=%d, Width=%d, Height=%d\n",
-                viewport.X, viewport.Y, viewport.Width, viewport.Height);
-      OutputDebugStringA(debugMsg);
-    }
-    
-    // 獲取變換矩陣
-    D3DXMATRIX world, view, proj;
-    dev->GetTransform(D3DTS_WORLD, &world);
-    dev->GetTransform(D3DTS_VIEW, &view);
-    dev->GetTransform(D3DTS_PROJECTION, &proj);
-    
-    OutputDebugStringA("Transform Matrices:\n");
-    
-    // 檢查是否為單位矩陣
-    D3DXMATRIX identity;
-    D3DXMatrixIdentity(&identity);
-    
-    if (memcmp(&world, &identity, sizeof(D3DXMATRIX)) == 0) {
-      OutputDebugStringA("  World: Identity\n");
-    } else {
-      OutputDebugStringA("  World: Modified\n");
-    }
-    
-    if (memcmp(&view, &identity, sizeof(D3DXMATRIX)) == 0) {
-      OutputDebugStringA("  View: Identity\n");
-    } else {
-      OutputDebugStringA("  View: Modified\n");
-    }
-    
-    if (memcmp(&proj, &identity, sizeof(D3DXMATRIX)) == 0) {
-      OutputDebugStringA("  Projection: Identity\n");
-    } else {
-      OutputDebugStringA("  Projection: Modified - This could cause UI coordinate issues!\n");
-      
-      // 輸出投影矩陣的值
-      char matrixDebug[1024];
-      sprintf_s(matrixDebug, "  Projection Matrix:\n");
-      OutputDebugStringA(matrixDebug);
-      for (int i = 0; i < 4; i++) {
-        sprintf_s(matrixDebug, "    [%.3f, %.3f, %.3f, %.3f]\n",
-                  proj.m[i][0], proj.m[i][1], proj.m[i][2], proj.m[i][3]);
-        OutputDebugStringA(matrixDebug);
-      }
-    }
-  }
+  // 診斷輸出視窗和視圖設定 - 已移除以減少噪音
   
   // 不要修改 D3D 變換矩陣 - Sprite 在螢幕空間工作
   
@@ -135,26 +85,7 @@ STDMETHODIMP UIManager::Render(IDirect3DDevice9* dev) {
     if (textureManager_) {
       auto texture = textureManager_->Load(img.imagePath);
       if (texture) {
-        // 診斷特定圖片的座標
-        if (img.imagePath == L"bg.bmp") {
-          static int frameCount = 0;
-          if (frameCount++ % 60 == 0) { // 每秒一次
-            char debugMsg[512];
-            sprintf_s(debugMsg, "Render bg.bmp Legacy: destRect=(%d,%d)-(%d,%d), pos=(%.1f,%.1f)\n",
-                      img.destRect.left, img.destRect.top, img.destRect.right, img.destRect.bottom,
-                      float(img.destRect.left), float(img.destRect.top));
-            OutputDebugStringA(debugMsg);
-            
-            // 測試座標轉換
-            D3DXVECTOR3 testPos(100.0f, 100.0f, 0.0f);
-            D3DXVECTOR4 transformed;
-            D3DXMATRIX currentTransform;
-            sprite_->GetTransform(&currentTransform);
-            D3DXVec3Transform(&transformed, &testPos, &currentTransform);
-            sprintf_s(debugMsg, "  Test transform (100,100) -> (%.1f,%.1f)\n", transformed.x, transformed.y);
-            OutputDebugStringA(debugMsg);
-          }
-        }
+        // 診斷特定圖片的座標 - 已移除
         
         D3DXVECTOR3 pos(float(img.destRect.left), float(img.destRect.top), 0.0f);
         
@@ -237,34 +168,46 @@ bool UIManager::HandleMessage(const MSG& msg) {
   
   switch (msg.message) {
     case WM_MOUSEMOVE: {
-      // 優先處理拖曳 - 只處理根組件拖曳
+      // 優先處理拖曳
       if (draggedComponent_ && isDragging_) {
         // 計算新的絕對位置（滑鼠位置 - 拖曳偏移）
         int newAbsX = mouseX - dragOffset_.x;
         int newAbsY = mouseY - dragOffset_.y;
         
-        // 由於draggedComponent_必須是根組件（沒有parent），直接設定相對座標
-        int newRelativeX = newAbsX;
-        int newRelativeY = newAbsY;
-        
-        // 計算移動的差值
-        int deltaX = newRelativeX - draggedComponent_->relativeX;
-        int deltaY = newRelativeY - draggedComponent_->relativeY;
-        
-        // 更詳細的調試輸出
-        static int dragUpdateCount = 0;
-        if (dragUpdateCount++ % 10 == 0) { // 每10次更新輸出一次
-          OutputDebugStringA(("Drag details: mouse=(" + std::to_string(mouseX) + "," + std::to_string(mouseY) + 
-                             "), offset=(" + std::to_string(dragOffset_.x) + "," + std::to_string(dragOffset_.y) +
-                             "), oldPos=(" + std::to_string(draggedComponent_->relativeX) + "," + std::to_string(draggedComponent_->relativeY) +
-                             "), newPos=(" + std::to_string(newRelativeX) + "," + std::to_string(newRelativeY) +
-                             "), delta=(" + std::to_string(deltaX) + "," + std::to_string(deltaY) + ")\n").c_str());
+        // 如果有父組件，需要轉換為相對座標
+        if (draggedComponent_->parent) {
+          RECT parentRect = draggedComponent_->parent->GetAbsoluteRect();
+          draggedComponent_->relativeX = newAbsX - parentRect.left;
+          draggedComponent_->relativeY = newAbsY - parentRect.top;
+        } else {
+          // 沒有父組件，直接使用絕對座標
+          draggedComponent_->relativeX = newAbsX;
+          draggedComponent_->relativeY = newAbsY;
         }
         
-        // 更新位置（只有位置真的改變時才更新）
-        if (deltaX != 0 || deltaY != 0) {
-          draggedComponent_->relativeX = newRelativeX;
-          draggedComponent_->relativeY = newRelativeY;
+        // 檢查是否有拖放目標
+        if (isInDragDropMode_) {
+          UIComponentNew* targetComponent = GetComponentAt(mouseX, mouseY);
+          
+          // 忽略拖曳的組件本身
+          if (targetComponent == draggedComponent_) {
+            targetComponent = nullptr;
+          }
+          
+          // 處理拖放目標變化
+          if (targetComponent != dropTarget_) {
+            // 離開舊目標
+            if (dropTarget_ && dropTarget_->CanReceiveDrop()) {
+              dropTarget_->OnDragLeave(draggedComponent_);
+            }
+            
+            dropTarget_ = targetComponent;
+            
+            // 進入新目標
+            if (dropTarget_ && dropTarget_->CanReceiveDrop()) {
+              dropTarget_->OnDragEnter(draggedComponent_);
+            }
+          }
         }
         
         return true; // 拖曳中，攔截所有滑鼠移動事件
@@ -277,10 +220,10 @@ bool UIManager::HandleMessage(const MSG& msg) {
       if (hoveredComponent_ != component) {
         // 清除舊的hover狀態
         if (hoveredComponent_) {
-          if (auto* btn = dynamic_cast<UIButtonNew*>(hoveredComponent_)) {
-            if (btn->state == UIButtonNew::State::Hover) {
-              btn->state = UIButtonNew::State::Normal;
-            }
+          // 直接嘗試轉換，但使用更安全的方式
+          auto* btn = dynamic_cast<UIButtonNew*>(hoveredComponent_);
+          if (btn && btn->state == UIButtonNew::State::Hover) {
+            btn->state = UIButtonNew::State::Normal;
           }
         }
         
@@ -292,6 +235,20 @@ bool UIManager::HandleMessage(const MSG& msg) {
         }
       }
       
+      // 處理按下的按鈕狀態
+      if (pressedComponent_) {
+        auto* pressedBtn = dynamic_cast<UIButtonNew*>(pressedComponent_);
+        if (pressedBtn) {
+          if (component == pressedComponent_) {
+            // 滑鼠在按下的按鈕上
+            pressedBtn->state = UIButtonNew::State::Pressed;
+          } else {
+            // 滑鼠離開按下的按鈕
+            pressedBtn->state = UIButtonNew::State::Normal;
+          }
+        }
+      }
+      
       return component != nullptr; // 如果滑鼠在UI上，阻止相機處理
     }
     
@@ -299,101 +256,38 @@ bool UIManager::HandleMessage(const MSG& msg) {
     case WM_RBUTTONDOWN: {
       UIComponentNew* component = GetComponentAt(mouseX, mouseY);
       
-      // 調試輸出 - 也輸出左鍵點擊的信息
-      if (msg.message == WM_LBUTTONDOWN) {
-        if (component) {
-          std::string compInfo = "unknown";
-          if (auto* img = dynamic_cast<UIImageNew*>(component)) {
-            compInfo = std::string(img->imagePath.begin(), img->imagePath.end());
-          } else if (auto* btn = dynamic_cast<UIButtonNew*>(component)) {
-            compInfo = "Button: " + std::string(btn->text.begin(), btn->text.end());
-          }
-          OutputDebugStringA(("LEFT click - GetComponentAt found " + compInfo + " at (" + std::to_string(mouseX) + "," + std::to_string(mouseY) + ")\n").c_str());
-        } else {
-          OutputDebugStringA(("LEFT click - GetComponentAt found NO component at (" + std::to_string(mouseX) + "," + std::to_string(mouseY) + ")\n").c_str());
-        }
-      }
-      
-      // 調試輸出
-      if (msg.message == WM_RBUTTONDOWN) {
-        if (component) {
-          OutputDebugStringA(("RIGHT click - GetComponentAt found component at (" + std::to_string(mouseX) + "," + std::to_string(mouseY) + ")\n").c_str());
-        } else {
-          OutputDebugStringA(("RIGHT click - GetComponentAt found NO component at (" + std::to_string(mouseX) + "," + std::to_string(mouseY) + ")\n").c_str());
-          // 輸出所有根組件的位置以診斷問題
-          OutputDebugStringA("  Current root components:\n");
-          for (const auto& comp : rootComponents_) {
-            if (comp->visible) {
-              RECT rect = comp->GetAbsoluteRect();
-              if (auto* img = dynamic_cast<UIImageNew*>(comp.get())) {
-                OutputDebugStringA(("    " + std::string(img->imagePath.begin(), img->imagePath.end()) + 
-                                   " at (" + std::to_string(rect.left) + "," + std::to_string(rect.top) + 
-                                   ")-(" + std::to_string(rect.right) + "," + std::to_string(rect.bottom) + 
-                                   "), transparent=" + std::string(img->useTransparency ? "YES" : "NO") + "\n").c_str());
-              }
-            }
-          }
-        }
-      }
-      
       if (component) {
         bool isRightButton = (msg.message == WM_RBUTTONDOWN);
+        
+        // 記錄按下的組件
+        if (!isRightButton) {
+          pressedComponent_ = component;
+          
+          // 檢查是否可拖曳（左鍵拖曳）
+          if (component->IsDraggable()) {
+            // 保存原始位置
+            component->originalX = component->relativeX;
+            component->originalY = component->relativeY;
+            
+            // 開始拖曳
+            draggedComponent_ = component;
+            RECT rect = component->GetAbsoluteRect();
+            dragOffset_.x = mouseX - rect.left;
+            dragOffset_.y = mouseY - rect.top;
+            
+            SetCapture(msg.hwnd);
+            isDragging_ = true;
+            isInDragDropMode_ = true;
+            
+            // 通知組件開始拖曳
+            component->OnDragStart();
+          }
+        }
+        
         bool handled = component->OnMouseDown(mouseX, mouseY, isRightButton);
         
         // 設定焦點
         SetFocusedComponent(component);
-        
-        // 檢查是否開始拖曳
-        if (isRightButton) {
-          // 使用特殊的方法來獲取可拖曳組件，這個方法會忽略透明度檢查
-          UIComponentNew* draggableComponent = GetDraggableComponentAt(mouseX, mouseY);
-          
-          // 調試輸出
-          if (draggableComponent) {
-            std::string compInfo = "unknown";
-            if (auto* img = dynamic_cast<UIImageNew*>(draggableComponent)) {
-              compInfo = std::string(img->imagePath.begin(), img->imagePath.end());
-            }
-            OutputDebugStringA(("GetDraggableComponentAt found: " + compInfo + " at (" + std::to_string(mouseX) + "," + std::to_string(mouseY) + ")\n").c_str());
-          } else {
-            OutputDebugStringA(("GetDraggableComponentAt found NO component at (" + std::to_string(mouseX) + "," + std::to_string(mouseY) + ")\n").c_str());
-          }
-          
-          if (draggableComponent) {
-            // 找到可拖曳的根組件
-            UIComponentNew* draggableRoot = draggableComponent;
-            while (draggableRoot && draggableRoot->parent) {
-              draggableRoot = draggableRoot->parent;
-            }
-            
-            // 檢查根組件是否可拖曳
-            if (auto* rootImg = dynamic_cast<UIImageNew*>(draggableRoot)) {
-              if (rootImg->draggable) {
-                RECT rootRect = draggableRoot->GetAbsoluteRect();
-                
-                draggedComponent_ = draggableRoot;
-                
-                // 計算拖曳偏移 - 滑鼠位置相對於根組件左上角的偏移
-                dragOffset_.x = mouseX - rootRect.left;
-                dragOffset_.y = mouseY - rootRect.top;
-                
-                SetCapture(msg.hwnd); // 捕獲滑鼠，確保拖曳期間UI有完全控制權
-                isDragging_ = true;
-                
-                // 輸出調試信息
-                OutputDebugStringA(("Start dragging root component at (" + 
-                                   std::to_string(draggableRoot->relativeX) + "," + 
-                                   std::to_string(draggableRoot->relativeY) + "), offset=(" +
-                                   std::to_string(dragOffset_.x) + "," + 
-                                   std::to_string(dragOffset_.y) + ")\n").c_str());
-              }
-            }
-          }
-          
-          if (!isDragging_) {
-            OutputDebugStringA("  No draggable component found\n");
-          }
-        }
         
         return handled;
       } else {
@@ -406,24 +300,94 @@ bool UIManager::HandleMessage(const MSG& msg) {
     
     case WM_LBUTTONUP:
     case WM_RBUTTONUP: {
-      if (draggedComponent_ && isDragging_) {
-        OutputDebugStringA(("End dragging at (" + 
-                           std::to_string(draggedComponent_->relativeX) + "," + 
-                           std::to_string(draggedComponent_->relativeY) + ")\n").c_str());
+      bool isRightButton = (msg.message == WM_RBUTTONUP);
+      
+      // 處理拖放結束
+      if (!isRightButton && draggedComponent_ && isDragging_) {
+        bool accepted = false;
+        
+        if (isInDragDropMode_ && dropTarget_ && dropTarget_->CanReceiveDrop()) {
+          // 嘗試放置
+          accepted = dropTarget_->OnDrop(draggedComponent_);
+        }
+        
+        if (accepted) {
+          // 接受拖放 - 刪除拖曳的組件
+          draggedComponent_->OnDragEnd(true);
+          
+          // 清除所有對即將刪除組件的引用
+          if (hoveredComponent_ == draggedComponent_) {
+            hoveredComponent_ = nullptr;
+          }
+          if (focusedComponent_ == draggedComponent_) {
+            focusedComponent_ = nullptr;
+          }
+          if (pressedComponent_ == draggedComponent_) {
+            pressedComponent_ = nullptr;
+          }
+          
+          // 從父容器中移除
+          if (draggedComponent_->parent) {
+            auto& siblings = draggedComponent_->parent->children;
+            siblings.erase(
+              std::remove_if(siblings.begin(), siblings.end(),
+                [this](const std::unique_ptr<UIComponentNew>& child) {
+                  return child.get() == draggedComponent_;
+                }),
+              siblings.end()
+            );
+          } else {
+            // 從根組件中移除
+            rootComponents_.erase(
+              std::remove_if(rootComponents_.begin(), rootComponents_.end(),
+                [this](const std::unique_ptr<UIComponentNew>& child) {
+                  return child.get() == draggedComponent_;
+                }),
+              rootComponents_.end()
+            );
+          }
+        } else {
+          // 拒絕拖放 - 返回原始位置
+          draggedComponent_->relativeX = draggedComponent_->originalX;
+          draggedComponent_->relativeY = draggedComponent_->originalY;
+          draggedComponent_->OnDragEnd(false);
+        }
+        
+        // 清理拖放狀態
+        if (dropTarget_) {
+          dropTarget_->OnDragLeave(draggedComponent_);
+          dropTarget_ = nullptr;
+        }
+        
         draggedComponent_ = nullptr;
-        dragOffset_ = {0, 0};  // 重置拖曳偏移
-        isDragging_ = false;   // 重置拖曳狀態
-        // 確保釋放滑鼠捕獲，防止相機繼續響應
+        dragOffset_ = {0, 0};
+        isDragging_ = false;
+        isInDragDropMode_ = false;
         ReleaseCapture();
-        return true; // 完全攔截事件，不讓相機處理
+        return true;
       }
       
       UIComponentNew* component = GetComponentAt(mouseX, mouseY);
-      if (component) {
-        bool isRightButton = (msg.message == WM_RBUTTONUP);
-        bool handled = component->OnMouseUp(mouseX, mouseY, isRightButton);
+      
+      if (!isRightButton && pressedComponent_) {
+        // 處理左鍵釋放
+        if (component == pressedComponent_) {
+          // 在同一個組件上釋放，觸發點擊
+          component->OnMouseUp(mouseX, mouseY, false);
+        } else {
+          // 不在同一個組件上釋放，只重置狀態
+          if (auto* btn = dynamic_cast<UIButtonNew*>(pressedComponent_)) {
+            btn->state = UIButtonNew::State::Normal;
+          }
+        }
+        pressedComponent_ = nullptr;
+        ReleaseCapture();
+        return true;
+      } else if (isRightButton && component) {
+        // 右鍵釋放
+        bool handled = component->OnMouseUp(mouseX, mouseY, true);
         if (handled) {
-          ReleaseCapture(); // 確保釋放滑鼠捕獲
+          ReleaseCapture();
         }
         return handled;
       }
@@ -823,20 +787,20 @@ void UIImageNew::Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureMana
     IDirect3DTexture9* tex = static_cast<IDirect3DTexture9*>(texture.get());
     D3DSURFACE_DESC desc;
     if (SUCCEEDED(tex->GetLevelDesc(0, &desc))) {
-      static bool sizeReported = false;
-      if (!sizeReported) {
-        sizeReported = true;
-        char debugMsg[256];
-        sprintf_s(debugMsg, "bg.png actual texture size: %dx%d, component size: %dx%d\n", 
-                  desc.Width, desc.Height, width, height);
-        OutputDebugStringA(debugMsg);
-      }
+      // 紋理大小調試輸出 - 已移除
     }
+  }
+  
+  // 如果正在接收拖放，顯示高亮效果
+  D3DCOLOR finalColor = color;
+  if (manager && static_cast<UIManager*>(manager)->GetDropTarget() == this) {
+    // 添加高亮效果
+    finalColor = D3DCOLOR_ARGB(255, 255, 255, 128); // 黃色高亮
   }
   
   // 直接以原始大小繪製，不進行縮放
   sprite->Draw(static_cast<IDirect3DTexture9*>(texture.get()), 
-               nullptr, nullptr, &pos, color);
+               nullptr, nullptr, &pos, finalColor);
 }
 
 bool UIImageNew::OnMouseDown(int x, int y, bool isRightButton) {
@@ -847,6 +811,21 @@ bool UIImageNew::OnMouseDown(int x, int y, bool isRightButton) {
     return true;
   }
   return false;
+}
+
+void UIImageNew::OnDragEnter(UIComponentNew* dragged) {
+  // 可以在這裡添加視覺反饋
+}
+
+void UIImageNew::OnDragLeave(UIComponentNew* dragged) {
+  // 清除視覺反饋
+}
+
+bool UIImageNew::OnDrop(UIComponentNew* dragged) {
+  if (!canReceiveDrop) return false;
+  
+  // 接受拖放
+  return true;
 }
 
 // UIButtonNew 實現  
@@ -922,7 +901,10 @@ void UIButtonNew::Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureMan
 bool UIButtonNew::OnMouseMove(int x, int y) {
   if (!enabled || !visible) return false;
   
-  state = State::Hover;
+  // Don't change state to hover if we're currently pressed
+  if (state != State::Pressed) {
+    state = State::Hover;
+  }
   return true;
 }
 
@@ -940,7 +922,7 @@ bool UIButtonNew::OnMouseUp(int x, int y, bool isRightButton) {
   if (!enabled || !visible) return false;
   
   if (!isRightButton && state == State::Pressed) {
-    state = State::Normal;
+    state = State::Hover;  // Stay in hover state since mouse is still over button
     if (onClick) {
       onClick();
     }
@@ -1128,16 +1110,7 @@ UIComponentNew* UIManager::CreateImage(const std::wstring& imagePath, int x, int
   // 但拖曳操作會根據 allowDragFromTransparent 參數決定是否允許在透明區域拖曳
   image->useTransparency = true;
   
-  // 調試輸出
-  std::wstring debugMsg = L"CreateImage: " + imagePath + L" at (" + std::to_wstring(x) + L"," + std::to_wstring(y) + L")";
-  if (parent) {
-    debugMsg += L" [child of parent]";
-  }
-  if (draggable && !parent) {
-    debugMsg += L" [draggable root - transparency DISABLED]";
-  }
-  debugMsg += L"\n";
-  OutputDebugStringW(debugMsg.c_str());
+  // 創建圖片調試輸出 - 已移除
   
   UIComponentNew* result = image.get();
   
@@ -1156,10 +1129,7 @@ UIComponentNew* UIManager::CreateButton(const std::wstring& text, int x, int y, 
                                     const std::wstring& hoverImage, 
                                     const std::wstring& pressedImage, 
                                     const std::wstring& disabledImage) {
-  // 調試輸出：追蹤按鈕創建
-  OutputDebugStringA(("UIManager::CreateButton - Creating button: " + 
-                     std::string(text.begin(), text.end()) + 
-                     " at (" + std::to_string(x) + "," + std::to_string(y) + ")\n").c_str());
+  // 按鈕創建調試輸出 - 已移除
   
   auto button = std::make_unique<UIButtonNew>();
   button->id = nextId_++;
@@ -1237,35 +1207,7 @@ UIComponentNew* UIManager::GetComponentAt(int x, int y) {
       
       RECT rect = comp->GetAbsoluteRect();
       
-      // 對 bg.png 添加特殊調試
-      if (auto* img = dynamic_cast<UIImageNew*>(comp.get())) {
-        if (img->imagePath == L"bg.png") {
-          static int missCount = 0;
-          if (missCount++ < 5) { // 只輸出前5次
-            OutputDebugStringA(("  Checking bg.png: point(" + std::to_string(x) + "," + std::to_string(y) + 
-                               ") vs rect(" + std::to_string(rect.left) + "," + std::to_string(rect.top) + 
-                               ")-(" + std::to_string(rect.right) + "," + std::to_string(rect.bottom) + ")\n").c_str());
-            
-            // 分析為什麼不在範圍內
-            if (y < rect.top) {
-              OutputDebugStringA(("    -> Mouse is ABOVE component (y=" + std::to_string(y) + 
-                                 " < top=" + std::to_string(rect.top) + ")\n").c_str());
-            }
-            if (y >= rect.bottom) {
-              OutputDebugStringA(("    -> Mouse is BELOW component (y=" + std::to_string(y) + 
-                                 " >= bottom=" + std::to_string(rect.bottom) + ")\n").c_str());
-            }
-            if (x < rect.left) {
-              OutputDebugStringA(("    -> Mouse is LEFT of component (x=" + std::to_string(x) + 
-                                 " < left=" + std::to_string(rect.left) + ")\n").c_str());
-            }
-            if (x >= rect.right) {
-              OutputDebugStringA(("    -> Mouse is RIGHT of component (x=" + std::to_string(x) + 
-                                 " >= right=" + std::to_string(rect.right) + ")\n").c_str());
-            }
-          }
-        }
-      }
+      // 對 bg.png 的特殊調試 - 已移除
       
       if (x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom) {
         // 先檢查子組件
@@ -1275,16 +1217,10 @@ UIComponentNew* UIManager::GetComponentAt(int x, int y) {
         // 檢查當前組件是否在透明區域 (只對圖片組件檢查)
         if (auto* img = dynamic_cast<UIImageNew*>(comp.get())) {
           if (img->useTransparency && IsPointInTransparentArea(x, y, img->imagePath, rect)) {
-            // 為 b-kuang.png 添加特殊調試
-            if (img->imagePath == L"b-kuang.png") {
-              OutputDebugStringA(("b-kuang.png: Point (" + std::to_string(x) + "," + std::to_string(y) + 
-                                 ") is in TRANSPARENT area, skipping to allow click-through\n").c_str());
-            }
+            // b-kuang.png 透明區域調試 - 已移除
             continue; // 在透明區域，跳過此組件
-          } else if (img->imagePath == L"b-kuang.png") {
-            OutputDebugStringA(("b-kuang.png: Point (" + std::to_string(x) + "," + std::to_string(y) + 
-                               ") is in NON-TRANSPARENT area\n").c_str());
           }
+          // b-kuang.png 非透明區域調試 - 已移除
         }
         
         // 沒有子組件被點擊且不在透明區域，返回此組件
@@ -1317,18 +1253,11 @@ UIComponentNew* UIManager::GetDraggableComponentAt(int x, int y) {
             // 如果不允許從透明區域拖曳，則需要檢查透明度
             if (!img->allowDragFromTransparent && img->useTransparency && 
                 IsPointInTransparentArea(x, y, img->imagePath, rect)) {
-              // 調試輸出
-              OutputDebugStringA(("GetDraggableComponentAt: " + 
-                                 std::string(img->imagePath.begin(), img->imagePath.end()) + 
-                                 " - point in transparent area, drag not allowed\n").c_str());
+              // 透明區域拖曳調試 - 已移除
               continue; // 在透明區域且不允許從透明區域拖曳，跳過
             }
             
-            // 調試輸出
-            OutputDebugStringA(("GetDraggableComponentAt: Found draggable root " + 
-                               std::string(img->imagePath.begin(), img->imagePath.end()) + 
-                               " at (" + std::to_string(x) + "," + std::to_string(y) + 
-                               "), allowDragFromTransparent=" + (img->allowDragFromTransparent ? "true" : "false") + "\n").c_str());
+            // 找到可拖曳根組件調試 - 已移除
             return comp.get();
           }
         }
@@ -1340,10 +1269,7 @@ UIComponentNew* UIManager::GetDraggableComponentAt(int x, int y) {
         // 如果不是可拖曳的根組件，則檢查透明度
         if (auto* img = dynamic_cast<UIImageNew*>(comp.get())) {
           if (img->useTransparency && IsPointInTransparentArea(x, y, img->imagePath, rect)) {
-            // 調試輸出
-            OutputDebugStringA(("GetDraggableComponentAt: Skipping " + 
-                               std::string(img->imagePath.begin(), img->imagePath.end()) + 
-                               " due to transparency at (" + std::to_string(x) + "," + std::to_string(y) + ")\n").c_str());
+            // 透明區域跳過調試 - 已移除
             continue; // 在透明區域，跳過此組件
           }
         }
@@ -1460,11 +1386,7 @@ void UIManager::BuildAlphaMask(const std::wstring& imagePath) const {
     // 存入快取
     alphaMaskCache_[imagePath] = std::move(mask);
     
-    // 輸出調試信息
-    char debugMsg[256];
-    sprintf_s(debugMsg, "Built alpha mask for %ls: %dx%d, %.1f%% transparent pixels\n", 
-              imagePath.c_str(), mask.width, mask.height, transparentPercent);
-    OutputDebugStringA(debugMsg);
+    // Alpha mask 建立成功 - 調試輸出已移除
     
   } catch (...) {
     // 錯誤處理
@@ -1531,5 +1453,20 @@ void UIManager::NotifyComponentClicked(UIComponentNew* component) {
     } else if (auto* img = dynamic_cast<UIImageNew*>(component)) {
       listener->OnImageClicked(img);
     }
+  }
+}
+
+void UIManager::AddComponent(std::unique_ptr<UIComponentNew> component) {
+  if (!component) return;
+  
+  // 設置管理器指針
+  component->manager = this;
+  
+  // 如果有父元件，添加到父元件的children中
+  if (component->parent) {
+    component->parent->children.push_back(std::move(component));
+  } else {
+    // 否則添加到根元件列表
+    rootComponents_.push_back(std::move(component));
   }
 }

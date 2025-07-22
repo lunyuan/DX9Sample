@@ -209,7 +209,6 @@ void PauseScene::CreatePauseMenu() {
 
 void PauseScene::OnUIComponentClicked(const Events::UIComponentClicked& event) {
     // UIManager 使用回調函式處理點擊，所以這個函式可能不會被呼叫
-    OutputDebugStringA(("PauseScene: Received click event for component: " + event.componentId + "\n").c_str());
 }
 
 

@@ -12,6 +12,10 @@
 #include <d3d9.h>
 #include <d3dx9.h>
 #include <chrono>
+#include <cmath>
+#include "AnimationPlayer.h"
+#include "UISerializer.h"
+#include <filesystem>
 
 GameScene::GameScene() 
     : Scene("GameScene")
@@ -41,8 +45,11 @@ GameScene::~GameScene() {
 
 bool GameScene::OnInitialize() {
     
+    OutputDebugStringA("GameScene::OnInitialize() 開始\n");
+    
     if (!Scene::OnInitialize()) {
         std::cerr << "GameScene: Scene::OnInitialize failed" << std::endl;
+        OutputDebugStringA("GameScene: Scene::OnInitialize 失敗\n");
         return false;
     }
     
@@ -68,26 +75,74 @@ bool GameScene::OnInitialize() {
     }
     
     // 載入遊戲資產
-    OutputDebugStringA("GameScene::OnInitialize - About to load game assets\n");
     try {
         LoadGameAssets();
     } catch (const std::exception& e) {
         std::cerr << "GameScene: Failed to load assets: " << e.what() << std::endl;
-        OutputDebugStringA(("GameScene: Exception loading assets: " + std::string(e.what()) + "\n").c_str());
+        std::cerr << "GameScene: Exception loading assets: " << e.what() << std::endl;
         return false;
     }
-    OutputDebugStringA("GameScene::OnInitialize - Finished loading game assets\n");
+    
+    // 載入骨骼動畫shader
+    auto* device = services_->GetDevice();
+    if (device) {
+        ID3DXBuffer* errorBuffer = nullptr;
+        HRESULT hr = D3DXCreateEffectFromFileA(
+            device,
+            "shaders/skeletal_animation.fx",
+            nullptr, // macros
+            nullptr, // include
+            D3DXSHADER_DEBUG,
+            nullptr, // pool
+            &skeletalAnimationEffect_,
+            &errorBuffer
+        );
+        
+        if (FAILED(hr)) {
+            if (errorBuffer) {
+                std::cerr << "Failed to load skeletal animation shader: " << (const char*)errorBuffer->GetBufferPointer() << std::endl;
+                OutputDebugStringA("Shader compilation error:\n");
+                OutputDebugStringA((const char*)errorBuffer->GetBufferPointer());
+                errorBuffer->Release();
+            }
+            OutputDebugStringA("Failed to create skeletal animation effect\n");
+        } else {
+            OutputDebugStringA("Successfully loaded skeletal animation shader\n");
+        }
+        
+        // 載入簡單貼圖shader
+        errorBuffer = nullptr;
+        hr = D3DXCreateEffectFromFileA(
+            device,
+            "shaders/simple_texture.fx",
+            nullptr, // macros
+            nullptr, // include
+            D3DXSHADER_DEBUG,
+            nullptr, // pool
+            &simpleTextureEffect_,
+            &errorBuffer
+        );
+        
+        if (FAILED(hr)) {
+            if (errorBuffer) {
+                std::cerr << "Failed to load simple texture shader: " << (const char*)errorBuffer->GetBufferPointer() << std::endl;
+                errorBuffer->Release();
+            }
+            OutputDebugStringA("Failed to create simple texture effect\n");
+        } else {
+            OutputDebugStringA("Successfully loaded simple texture shader\n");
+        }
+    }
     
     // 檢查模型是否真的載入了
     if (!loadedModels_.empty()) {
-        OutputDebugStringA(("GameScene::OnInitialize - " + std::to_string(loadedModels_.size()) + " models loaded\n").c_str());
     } else {
-        OutputDebugStringA("GameScene::OnInitialize - WARNING: No models loaded after LoadGameAssets!\n");
+        std::cerr << "GameScene: WARNING: No models loaded" << std::endl;
     }
     
-    // 創建 UI
+    // 創建 UI - 嘗試載入已保存的UI佈局
     try {
-        CreateGameUI();
+        LoadUILayout();  // 這會載入保存的UI或創建預設UI
         CreatePersistentHUD();
     } catch (const std::exception& e) {
         std::cerr << "GameScene: Failed to create UI: " << e.what() << std::endl;
@@ -116,6 +171,9 @@ void GameScene::OnUpdate(float deltaTime) {
     
     if (!isPaused_) {
         UpdateGameLogic(deltaTime);
+        
+        // 更新動畫時間
+        animationTime_ += deltaTime;
     }
 }
 
@@ -128,7 +186,14 @@ void GameScene::OnRender() {
         // 設置基本 3D 渲染狀態
         device->SetRenderState(D3DRS_LIGHTING, FALSE);
         device->SetRenderState(D3DRS_ZENABLE, D3DZB_TRUE);
-        device->SetRenderState(D3DRS_CULLMODE, D3DCULL_CCW);
+        device->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);  // 關閉背面剔除以查看所有面
+        // device->SetRenderState(D3DRS_FILLMODE, D3DFILL_WIREFRAME);  // 可選：線框模式
+        
+        // 確保紋理渲染已啟用
+        device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+        device->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
+        device->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
+        device->SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_LINEAR);
         
         // 設置世界變換矩陣
         D3DXMATRIX worldMatrix;
@@ -143,7 +208,7 @@ void GameScene::OnRender() {
         } else {
             // Fallback: 如果沒有 camera controller，使用預設矩陣
             D3DXMATRIX viewMatrix, projMatrix;
-            D3DXVECTOR3 eye(0.0f, 5.0f, -10.0f);
+            D3DXVECTOR3 eye(0.0f, 10.0f, -50.0f);  // 往後移動相機以看到更大的模型
             D3DXVECTOR3 at(0.0f, 0.0f, 0.0f);
             D3DXVECTOR3 up(0.0f, 1.0f, 0.0f);
             D3DXMatrixLookAtLH(&viewMatrix, &eye, &at, &up);
@@ -157,10 +222,6 @@ void GameScene::OnRender() {
         
         // 渲染載入的所有3D模型
         if (!loadedModels_.empty()) {
-            static int renderCount = 0;
-            if (renderCount++ % 60 == 0) { // 每秒輸出一次
-                OutputDebugStringA(("GameScene: Rendering " + std::to_string(loadedModels_.size()) + " models...\n").c_str());
-            }
             
             // 啟用光照
             device->SetRenderState(D3DRS_LIGHTING, TRUE);
@@ -173,60 +234,119 @@ void GameScene::OnRender() {
             light.Diffuse.g = 1.0f;
             light.Diffuse.b = 1.0f;
             light.Diffuse.a = 1.0f;
-            light.Direction = D3DXVECTOR3(-1.0f, -1.0f, 1.0f);
+            light.Direction = D3DXVECTOR3(0.0f, -1.0f, 0.0f);  // 光線從上往下照
             device->SetLight(0, &light);
             device->LightEnable(0, TRUE);
             
-            // 設置環境光
-            device->SetRenderState(D3DRS_AMBIENT, D3DCOLOR_XRGB(64, 64, 64));
+            // 設置環境光 (增強以便看清模型)
+            device->SetRenderState(D3DRS_AMBIENT, D3DCOLOR_XRGB(192, 192, 192));  // 增加環境光亮度
+            
+            // 確保貼圖被正確渲染
+            device->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
+            device->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
+            device->SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_LINEAR);
+            
+            // 設置貼圖座標wrap模式
+            device->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_WRAP);
+            device->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_WRAP);
+            
+            // 關閉 Alpha 混合，確保貼圖不會透明
+            device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+            
+            // 設置貼圖階段狀態
+            device->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+            device->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+            device->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_DIFFUSE);
+            device->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+            device->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
             
             // 渲染每個模型
             int modelIndex = 0;
             for (const auto& model : loadedModels_) {
                 if (model) {
-                    // 設置世界變換矩陣（水平排列模型）
+                    // 設置世界變換矩陣（保持模型原始位置）
                     D3DXMATRIX worldMatrix;
-                    D3DXMatrixTranslation(&worldMatrix, modelIndex * 5.0f - (loadedModels_.size() - 1) * 2.5f, 0.0f, 0.0f);
+                    D3DXMatrixIdentity(&worldMatrix);  // 使用單位矩陣，不改變位置
                     device->SetTransform(D3DTS_WORLD, &worldMatrix);
                     
-                    // 直接讓模型自己處理材質和紋理
-                    // SkinMesh::Draw 會自動處理所有材質和紋理
-                    model->mesh.Draw(device);
                     
-                    // 調試輸出
-                    static int debugFrameCount = 0;
-                    if (debugFrameCount++ % 300 == 0) { // 每5秒輸出一次
-                        char msg[256];
-                        sprintf_s(msg, "Model %d: %zu materials, %zu vertices\n", 
-                                 modelIndex, model->mesh.materials.size(), model->mesh.vertices.size());
-                        OutputDebugStringA(msg);
+                    // 使用適合的shader
+                    // 如果模型沒有骨骼權重數據，使用簡單shader
+                    bool hasBoneWeights = false; // TODO: 檢查模型是否真的有骨骼權重
+                    bool useSkeletalAnimation = false; // 暫時禁用骨骼動畫
+                    bool useSimpleShader = true; // 使用簡單shader
+                    
+                    // 使用骨骼動畫shader渲染（如果可用）
+                    if (useSkeletalAnimation && skeletalAnimationEffect_ && !model->skeleton.joints.empty()) {
                         
-                        for (size_t i = 0; i < model->mesh.materials.size(); ++i) {
-                            sprintf_s(msg, "  Material %zu: tex=%p\n", i, model->mesh.materials[i].tex);
-                            OutputDebugStringA(msg);
+                        // 計算骨骼變換矩陣
+                        std::vector<DirectX::XMFLOAT4X4> boneMatrices;
+                        
+                        // 如果有動畫，使用動畫播放器計算矩陣
+                        if (!model->skeleton.animations.empty()) {
+                            // 確保動畫時間在範圍內
+                            float animDuration = model->skeleton.animations[0].duration;
+                            float loopedTime = fmodf(animationTime_, animDuration);
+                            
+                            AnimationPlayer::ComputeGlobalTransforms(
+                                model->skeleton,
+                                model->skeleton.animations[0], // 使用第一個動畫
+                                loopedTime,
+                                boneMatrices
+                            );
+                        } else {
+                            // 沒有動畫，使用綁定姿勢
+                            boneMatrices.resize(model->skeleton.joints.size());
+                            for (size_t i = 0; i < model->skeleton.joints.size(); ++i) {
+                                boneMatrices[i] = model->skeleton.joints[i].bindPoseInverse;
+                            }
                         }
+                        
+                        // 使用骨骼動畫渲染
+                        model->mesh.DrawWithAnimation(device, skeletalAnimationEffect_, boneMatrices);
+                    } else if (useSimpleShader && simpleTextureEffect_) {
+                        // 使用簡單shader
+                        static int simpleShaderDebugCount = 0;
+                        if (simpleShaderDebugCount++ % 300 == 0) {
+                            OutputDebugStringA("Using simple texture shader\n");
+                        }
+                        model->mesh.DrawWithEffect(device, simpleTextureEffect_);
+                    } else {
+                        // 沒有骨骼或shader，使用普通渲染
+                        static int noAnimDebugCount = 0;
+                        if (noAnimDebugCount++ % 300 == 0) {
+                            char debugMsg[512];
+                            sprintf_s(debugMsg, "Using fixed pipeline: useSkeletalAnimation=%s, effect=%p, joints=%zu\n",
+                                      useSkeletalAnimation ? "true" : "false",
+                                      skeletalAnimationEffect_,
+                                      model->skeleton.joints.size());
+                            OutputDebugStringA(debugMsg);
+                        }
+                        // 直接使用 SkinMesh 的 Draw 函數，它會使用已經設定好的貼圖
+                        model->mesh.Draw(device);
                     }
+                    
                     
                     modelIndex++;
                 }
             }
             
         } else {
-            static int noModelCount = 0;
-            if (noModelCount++ % 60 == 0) { // 每秒輸出一次
-                OutputDebugStringA("GameScene: No model loaded, rendering test triangle\n");
-            }
+            std::cout << "GameScene: No models loaded, rendering test triangle" << std::endl;
             
             // 如果沒有載入模型，渲染測試三角形
+            device->SetRenderState(D3DRS_LIGHTING, FALSE);
+            device->SetTexture(0, nullptr);
+            
             struct Vertex {
                 float x, y, z;
                 unsigned long color;
             };
             
             Vertex vertices[3] = {
-                { 0.0f,  3.0f, 0.0f, 0xFFFF0000 }, // 頂部紅色
-                {-3.0f, -3.0f, 0.0f, 0xFF00FF00 }, // 左下綠色
-                { 3.0f, -3.0f, 0.0f, 0xFF0000FF }  // 右下藍色
+                { 0.0f,  10.0f, 0.0f, 0xFFFF0000 }, // 頂部紅色
+                {-10.0f, -10.0f, 0.0f, 0xFF00FF00 }, // 左下綠色
+                { 10.0f, -10.0f, 0.0f, 0xFF0000FF }  // 右下藍色
             };
             
             device->SetFVF(D3DFVF_XYZ | D3DFVF_DIFFUSE);
@@ -255,6 +375,16 @@ void GameScene::OnCleanup() {
     loadedModels_.clear();
     loadedTexture_.reset();
     
+    // 清理shader
+    if (skeletalAnimationEffect_) {
+        skeletalAnimationEffect_->Release();
+        skeletalAnimationEffect_ = nullptr;
+    }
+    if (simpleTextureEffect_) {
+        simpleTextureEffect_->Release();
+        simpleTextureEffect_ = nullptr;
+    }
+    
     Scene::OnCleanup();
 }
 
@@ -278,7 +408,6 @@ void GameScene::OnEnter() {
 void GameScene::OnExit() {
     // 檢查 services_ 是否有效
     if (!services_) {
-        OutputDebugStringA("GameScene::OnExit - services_ is null\n");
         Scene::OnExit();
         return;
     }
@@ -314,9 +443,6 @@ bool GameScene::OnHandleInput(const MSG& msg) {
 
 void GameScene::CreateGameUI() {
     // 調試輸出：確認此函數只被調用一次
-    static int createCount = 0;
-    createCount++;
-    OutputDebugStringA(("GameScene::CreateGameUI called - count: " + std::to_string(createCount) + "\n").c_str());
     
     // 使用舊的 UIManager，它支援父子關係
     auto* uiManager = services_->GetUIManager();
@@ -347,10 +473,12 @@ void GameScene::CreateGameUI() {
     // 創建背景圖片作為父容器 (可拖曳，位置在 100, 100，允許從透明區域拖曳)
     auto* bgImage = uiManager->CreateImage(L"bg.png", 100, 100, bgWidth, bgHeight, true, nullptr, true);
     
+    // 將背景圖片轉換為UIImageNew並設定為可接收拖放
+    if (auto* bgImgNew = dynamic_cast<UIImageNew*>(bgImage)) {
+        bgImgNew->canReceiveDrop = true;  // 設定為可接收拖放
+    }
+    
     // 輸出調試信息
-    char debugMsg[256];
-    sprintf_s(debugMsg, "Creating bg.png at (100,100) size %dx%d\n", bgWidth, bgHeight);
-    OutputDebugStringA(debugMsg);
     
     // 在背景圖片上添加子元素 (使用相對座標，會跟隨父容器移動)
     auto* pauseButton = uiManager->CreateButton(L"PAUSE", 20, 40, btWidth, btHeight,
@@ -362,17 +490,15 @@ void GameScene::CreateGameUI() {
         }, bgImage,          // parent
         L"bt.bmp");         // button image
     
-    sprintf_s(debugMsg, "Creating bt.bmp at (20,40) size %dx%d\n", btWidth, btHeight);
-    OutputDebugStringA(debugMsg);
     
-    // 在按鈕上再添加一層子物件 (使用 7.png)
-    auto* buttonChild = uiManager->CreateImage(L"7.png", 10, 10, sevenWidth, sevenHeight, false, pauseButton);
+    // 在按鈕上再添加一層子物件 (使用 7.png，設定為可拖曳)
+    auto* buttonChild = uiManager->CreateImage(L"7.png", 10, 10, sevenWidth, sevenHeight, true, pauseButton);
     
-    sprintf_s(debugMsg, "Creating 7.png at (10,10) size %dx%d\n", sevenWidth, sevenHeight);
-    OutputDebugStringA(debugMsg);
+    // 將 7.png 設定為可拖曳
+    if (auto* sevenImg = dynamic_cast<UIImageNew*>(buttonChild)) {
+        sevenImg->draggable = true;  // 可以被拖曳
+    }
     
-    // 輸出調試信息
-    OutputDebugStringA("Created button child with 7.png at relative position (10,10) on the button\n");
     
     // 添加文字 (注意：AddText 不支援父子關係，所以文字不會跟隨背景圖片移動)
     // 為了實現父子關係，可能需要手動計算位置或修改 UIManager
@@ -398,48 +524,105 @@ void GameScene::CreateGameUI() {
     // 創建 b-kuang.png 作為另一個獨立的可拖曳UI (位置在 400, 300，不允許從透明區域拖曳)
     auto* bkuangImage = uiManager->CreateImage(L"b-kuang.png", 400, 300, bkuangWidth, bkuangHeight, true, nullptr, false);
     
-    sprintf_s(debugMsg, "Creating b-kuang.png at (400,300) size %dx%d [independent draggable UI]\n", bkuangWidth, bkuangHeight);
-    OutputDebugStringA(debugMsg);
+    // 設定 b-kuang.png 為可接收拖放
+    if (auto* bkuangImgNew = dynamic_cast<UIImageNew*>(bkuangImage)) {
+        bkuangImgNew->canReceiveDrop = true;  // 可以接收拖放
+    }
+    
     
     // 可以在 b-kuang.png 上添加一些子元素來測試
     auto* testButton = uiManager->CreateButton(L"TEST", 50, 50, 100, 40,
         [this]() { 
-            OutputDebugStringA("Test button on b-kuang.png clicked!\n");
         }, bkuangImage,     // parent is b-kuang.png
         L"");              // no button image, use default style
-    
-    OutputDebugStringA("Created test button on b-kuang.png at relative position (50,50)\n");
     
     // 新增一個獨立的按鈕（不在任何可拖曳UI上），用來測試透明區域點擊穿透
     auto* standaloneButton = uiManager->CreateButton(L"Standalone", 150, 400, 120, 40,
         [this]() { 
-            OutputDebugStringA("Standalone button clicked! This proves click-through works.\n");
         }, nullptr,        // no parent - this is a root component
         L"");             // no button image, use default style
-    
-    OutputDebugStringA("Created standalone button at (150,400) to test click-through transparency\n");
     
     // 示範如何使用名稱查找組件
     // 稍後可以通過名稱找到組件，例如：
     // auto* bgComponent = uiManager->FindComponentByName<UIImageNew>(L"bg.png");
     // auto* testButtonComponent = uiManager->FindComponentByName<UIButtonNew>(L"Button_TEST");
     
-    // 調試輸出：顯示所有組件的名稱
-    OutputDebugStringA("\n=== Created UI Components ===\n");
-    OutputDebugStringA(("bg.png - ID: " + std::to_string(bgImage->id) + ", Name: " + 
-                       std::string(bgImage->name.begin(), bgImage->name.end()) + "\n").c_str());
-    OutputDebugStringA(("b-kuang.png - ID: " + std::to_string(bkuangImage->id) + ", Name: " + 
-                       std::string(bkuangImage->name.begin(), bkuangImage->name.end()) + "\n").c_str());
-    if (testButton) {
-        OutputDebugStringA(("Test Button - ID: " + std::to_string(testButton->id) + ", Name: " + 
-                           std::string(testButton->name.begin(), testButton->name.end()) + "\n").c_str());
-    }
-    if (standaloneButton) {
-        OutputDebugStringA(("Standalone Button - ID: " + std::to_string(standaloneButton->id) + ", Name: " + 
-                           std::string(standaloneButton->name.begin(), standaloneButton->name.end()) + "\n").c_str());
-    }
-    OutputDebugStringA("=============================\n\n");
     
+    // 保存UI佈局到檔案
+    SaveUILayout();
+}
+
+void GameScene::SaveUILayout() {
+    auto* uiManager = services_->GetUIManager();
+    if (!uiManager) {
+        std::cerr << "GameScene: UIManager not available for saving" << std::endl;
+        return;
+    }
+    
+    // 保存UI佈局到檔案
+    std::filesystem::path uiLayoutPath = "ui_layout.json";
+    if (UISerializer::SaveToFile(uiManager, uiLayoutPath)) {
+    } else {
+        std::cerr << "GameScene: Failed to save UI layout" << std::endl;
+    }
+}
+
+void GameScene::LoadUILayout() {
+    auto* uiManager = services_->GetUIManager();
+    if (!uiManager) {
+        std::cerr << "GameScene: UIManager not available for loading" << std::endl;
+        return;
+    }
+    
+    // 檢查檔案是否存在
+    std::filesystem::path uiLayoutPath = "ui_layout.json";
+    if (!std::filesystem::exists(uiLayoutPath)) {
+        CreateGameUI();
+        return;
+    }
+    
+    // 載入UI佈局
+    if (UISerializer::LoadFromFile(uiManager, uiLayoutPath)) {
+        
+        // 重新連接事件處理器
+        // 找到PAUSE按鈕並重新連接點擊事件
+        if (auto* pauseButton = dynamic_cast<UIManager*>(uiManager)->FindComponentByName<UIButtonNew>(L"Button_PAUSE")) {
+            pauseButton->onClick = [this]() { 
+                // 暫停按鈕點擊處理
+                if (services_ && services_->GetSceneManager()) {
+                    services_->GetSceneManager()->PushScene("PauseScene");
+                }
+            };
+        }
+        
+        // 找到TEST按鈕並重新連接點擊事件
+        if (auto* testButton = dynamic_cast<UIManager*>(uiManager)->FindComponentByName<UIButtonNew>(L"Button_TEST")) {
+            testButton->onClick = [this]() {
+            };
+        }
+        
+        // 找到Standalone按鈕並重新連接點擊事件
+        if (auto* standaloneButton = dynamic_cast<UIManager*>(uiManager)->FindComponentByName<UIButtonNew>(L"Button_Standalone")) {
+            standaloneButton->onClick = [this]() {
+            };
+        }
+        
+        // 重新設定拖放配置
+        if (auto* bgImage = dynamic_cast<UIManager*>(uiManager)->FindComponentByName<UIImageNew>(L"bg.png")) {
+            bgImage->canReceiveDrop = true;
+        }
+        
+        if (auto* bkuangImage = dynamic_cast<UIManager*>(uiManager)->FindComponentByName<UIImageNew>(L"b-kuang.png")) {
+            bkuangImage->canReceiveDrop = true;
+        }
+        
+        if (auto* sevenImage = dynamic_cast<UIManager*>(uiManager)->FindComponentByName<UIImageNew>(L"7.png")) {
+            sevenImage->draggable = true;
+        }
+    } else {
+        std::cerr << "GameScene: Failed to load UI layout, creating default UI" << std::endl;
+        CreateGameUI();
+    }
 }
 
 void GameScene::CreatePersistentHUD() {
@@ -503,7 +686,6 @@ void GameScene::OnConfigChanged(const Events::ConfigurationChanged& event) {
 }
 
 void GameScene::OnPauseMenuAction(const PauseMenuAction& event) {
-    OutputDebugStringA(("GameScene: Received PauseMenuAction: " + event.action + "\n").c_str());
     
     if (event.action == "resume") {
         // 恢復遊戲：彈出暫停場景
@@ -558,60 +740,91 @@ void GameScene::LoadGameAssets() {
     auto* assetManager = services_->GetAssetManager();
     if (!assetManager) {
         std::cerr << "GameScene: AssetManager not available" << std::endl;
-        OutputDebugStringA("GameScene: AssetManager not available\n");
         return;
     }
     
-    OutputDebugStringA("GameScene: Starting to load assets...\n");
-    
     // 載入遊戲資產
     try {
-        // 載入所有模型
-        OutputDebugStringA("GameScene: Loading all models from horse_group.x...\n");
-        auto models = assetManager->LoadAllModels("horse_group.x");
+        // 載入 test1.x，包含 7 匹馬 (horse01 到 horse07)
+        auto models = assetManager->LoadAllModels("test1.x");
+        if (models.empty()) {
+            // 如果載入失敗，嘗試 test.x (只有 1 匹馬)
+            OutputDebugStringA("GameScene: test1.x 未找到或空白，嘗試 test.x\n");
+            models = assetManager->LoadAllModels("test.x");
+        }
         if (!models.empty()) {
             loadedModels_ = models;
-            OutputDebugStringA(("GameScene: Successfully loaded " + std::to_string(models.size()) + " models from horse_group.x\n").c_str());
             
-            // 輸出每個模型的資訊
-            int modelIdx = 0;
-            for (const auto& model : models) {
-                char debugMsg[256];
-                sprintf_s(debugMsg, "  Model %d: %zu vertices, %zu indices, %zu materials\n", 
-                         modelIdx, model->mesh.vertices.size(), model->mesh.indices.size(), 
-                         model->mesh.materials.size());
-                OutputDebugStringA(debugMsg);
+            // 顯示實際載入的模型數量
+            char debugMsg[256];
+            sprintf_s(debugMsg, "GameScene: 成功載入 %zu 個模型\n", loadedModels_.size());
+            OutputDebugStringA(debugMsg);
+            
+            // 如果只有一個模型，可以選擇是否複製
+            // 註解掉複製邏輯，先看原始檔案有多少模型
+            /*
+            if (loadedModels_.size() == 1) {
+                auto originalModel = loadedModels_[0];
                 
-                // 輸出材質資訊
-                for (size_t matIdx = 0; matIdx < model->mesh.materials.size(); ++matIdx) {
-                    sprintf_s(debugMsg, "    Material %zu: tex=%p\n", 
-                             matIdx, model->mesh.materials[matIdx].tex);
-                    OutputDebugStringA(debugMsg);
+                // 複製6匹馬（加上原本的共7匹）
+                for (int i = 0; i < 6; ++i) {
+                    auto copiedModel = std::make_shared<ModelData>(*originalModel);
+                    loadedModels_.push_back(copiedModel);
                 }
-                modelIdx++;
+                
+                std::cout << "GameScene: Created " << loadedModels_.size() << " horses from single model" << std::endl;
+            }
+            */
+            
+            // Save models in different formats for testing
+            // SaveModelsInDifferentFormats(models);  // TODO: Implement when savers are ready
+            
+            for (const auto& model : models) {
+                if (model) {
+                    std::cout << "  - Model with " << model->mesh.vertices.size() << " vertices, " 
+                              << model->mesh.indices.size()/3 << " triangles" << std::endl;
+                }
             }
         } else {
-            OutputDebugStringA("GameScene: Failed to load models from horse_group.x - returned empty\n");
+            std::cerr << "GameScene: Failed to load models from test.x" << std::endl;
         }
         
-        // 載入紋理
-        OutputDebugStringA("GameScene: Loading test.bmp...\n");
-        auto texture = assetManager->LoadTexture("test.bmp");
+        // 使用 Horse4.bmp 作為貼圖
+        auto texture = assetManager->LoadTexture("Horse4.bmp");
+        if (!texture) {
+            // 如果找不到，嘗試載入 Horse3.bmp
+            texture = assetManager->LoadTexture("Horse3.bmp");
+            if (!texture) {
+                // 最後嘗試載入 test.bmp
+                texture = assetManager->LoadTexture("test.bmp");
+            }
+        }
+        
         if (texture) {
             loadedTexture_ = texture;
-            OutputDebugStringA("GameScene: Successfully loaded test.bmp texture\n");
+            std::cout << "GameScene: Texture loaded successfully" << std::endl;
             
-            // 將 test.bmp 應用到所有模型
+            // 應用貼圖到所有載入的模型
             auto* device = services_->GetDevice();
             if (device) {
                 for (auto& model : loadedModels_) {
                     if (model) {
-                        model->mesh.SetTexture(device, "test.bmp");
+                        char debugMsg[256];
+                        sprintf_s(debugMsg, "GameScene: Before SetTexture - materials count: %zu\n", 
+                                  model->mesh.materials.size());
+                        OutputDebugStringA(debugMsg);
+                        
+                        // 使用 SetTexture 方法設定貼圖
+                        model->mesh.SetTexture(device, "Horse4.bmp");
+                        
+                        sprintf_s(debugMsg, "GameScene: After SetTexture - texture: %p\n", 
+                                  model->mesh.texture);
+                        OutputDebugStringA(debugMsg);
                     }
                 }
             }
         } else {
-            OutputDebugStringA("GameScene: Failed to load test.bmp texture - returned null\n");
+            std::cerr << "GameScene: Warning: No texture loaded" << std::endl;
         }
         
         // 發送資產載入事件
@@ -624,10 +837,8 @@ void GameScene::LoadGameAssets() {
                    
     } catch (const std::exception& e) {
         std::cerr << "GameScene: Failed to load assets: " << e.what() << std::endl;
-        OutputDebugStringA(("GameScene: Exception in LoadGameAssets: " + std::string(e.what()) + "\n").c_str());
     } catch (...) {
         std::cerr << "GameScene: Unknown exception in LoadGameAssets" << std::endl;
-        OutputDebugStringA("GameScene: Unknown exception in LoadGameAssets\n");
     }
 }
 
@@ -672,23 +883,140 @@ void GameScene::TriggerScoreIncrease(int points, const std::string& reason) {
     Emit(scoreEvent);
 }
 
+void GameScene::SaveModelsInDifferentFormats(const std::vector<std::shared_ptr<ModelData>>& models) {
+    // TODO: Implement when model savers are ready
+    /*
+    // Save each model in FBX and glTF formats
+    std::cout << "GameScene: Saving loaded models in different formats..." << std::endl;
+    
+    // Create savers
+    auto fbxSaver = CreateFbxSaver();
+    auto gltfSaver = CreateGltfSaver();
+    
+    if (!fbxSaver || !gltfSaver) {
+        std::cerr << "GameScene: Failed to create model savers" << std::endl;
+        return;
+    }
+    
+    // Save each model
+    int modelIndex = 0;
+    for (const auto& model : models) {
+        if (!model) continue;
+        
+        std::string baseName = "test_object_" + std::to_string(modelIndex);
+        
+        // Convert ModelData to ModelDataV2 for saving
+        auto modelV2 = std::make_unique<ModelDataV2>();
+        modelV2->name = baseName;
+        
+        // Copy mesh data
+        modelV2->meshes.push_back(MeshDataV2());
+        auto& meshV2 = modelV2->meshes.back();
+        meshV2.vertices = model->mesh.vertices;
+        meshV2.indices = model->mesh.indices;
+        
+        // Copy skeleton if present
+        if (!model->skeleton.joints.empty()) {
+            modelV2->skeleton = std::make_unique<SkeletonV2>();
+            modelV2->skeleton->joints.reserve(model->skeleton.joints.size());
+            for (const auto& joint : model->skeleton.joints) {
+                JointV2 jointV2;
+                jointV2.name = joint.name;
+                jointV2.parentIndex = joint.parentIndex;
+                jointV2.bindPoseInverse = joint.bindPoseInverse;
+                modelV2->skeleton->joints.push_back(jointV2);
+            }
+        }
+        
+        // Copy animations if present
+        if (!model->skeleton.animations.empty()) {
+            modelV2->animations.reserve(model->skeleton.animations.size());
+            for (const auto& anim : model->skeleton.animations) {
+                AnimationV2 animV2;
+                animV2.name = anim.name;
+                animV2.duration = anim.duration;
+                animV2.ticksPerSecond = anim.ticksPerSecond;
+                // Copy animation channels - simplified for now
+                modelV2->animations.push_back(animV2);
+            }
+        }
+        
+        // Save as FBX
+        try {
+            std::string fbxPath = baseName + ".fbx";
+            SaveOptions options;
+            options.embedTextures = false;
+            options.exportAnimations = true;
+            
+            auto result = fbxSaver->SaveModel(*modelV2, fbxPath, options);
+            if (result.success) {
+                std::cout << "  Saved: " << fbxPath << std::endl;
+            } else {
+                std::cerr << "  Failed to save " << fbxPath << ": " << result.errorMessage << std::endl;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "  Exception saving FBX: " << e.what() << std::endl;
+        }
+        
+        // Save as glTF
+        try {
+            std::string gltfPath = baseName + ".gltf";
+            SaveOptions options;
+            options.embedTextures = false;
+            options.exportAnimations = true;
+            options.binary = false;  // Use .gltf instead of .glb
+            
+            auto result = gltfSaver->SaveModel(*modelV2, gltfPath, options);
+            if (result.success) {
+                std::cout << "  Saved: " << gltfPath << std::endl;
+            } else {
+                std::cerr << "  Failed to save " << gltfPath << ": " << result.errorMessage << std::endl;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "  Exception saving glTF: " << e.what() << std::endl;
+        }
+        
+        modelIndex++;
+    }
+    
+    // Test loading the saved files
+    std::cout << "\nGameScene: Testing loading of saved files..." << std::endl;
+    
+    // Test loading FBX
+    auto* assetManager = services_->GetAssetManager();
+    if (assetManager) {
+        try {
+            auto fbxModels = assetManager->LoadAllModels("test_object_0.fbx");
+            if (!fbxModels.empty()) {
+                std::cout << "  Successfully loaded test_object_0.fbx: " << fbxModels.size() << " models" << std::endl;
+            } else {
+                std::cerr << "  Failed to load test_object_0.fbx" << std::endl;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "  Exception loading FBX: " << e.what() << std::endl;
+        }
+        
+        // Test loading glTF
+        try {
+            auto gltfModels = assetManager->LoadAllModels("test_object_0.gltf");
+            if (!gltfModels.empty()) {
+                std::cout << "  Successfully loaded test_object_0.gltf: " << gltfModels.size() << " models" << std::endl;
+            } else {
+                std::cerr << "  Failed to load test_object_0.gltf" << std::endl;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "  Exception loading glTF: " << e.what() << std::endl;
+        }
+    }
+    */
+}
+
 // IUIListener 實現
 void GameScene::OnButtonClicked(UIButtonNew* button) {
     if (!button) return;
     
     // 輸出調試信息
-    OutputDebugStringA(("GameScene::OnButtonClicked - Button clicked: " + 
-                       std::string(button->name.begin(), button->name.end()) + 
-                       " (ID: " + std::to_string(button->id) + ")\n").c_str());
-    
     // 可以根據按鈕名稱或ID執行不同的操作
-    if (button->name == L"Button_PAUSE") {
-        OutputDebugStringA("  -> This is the PAUSE button\n");
-    } else if (button->name == L"Button_TEST") {
-        OutputDebugStringA("  -> This is the TEST button on b-kuang.png\n");
-    } else if (button->name == L"Button_Standalone") {
-        OutputDebugStringA("  -> This is the Standalone button\n");
-    }
 }
 
 void GameScene::OnComponentClicked(UIComponentNew* component) {
@@ -703,10 +1031,6 @@ void GameScene::OnComponentClicked(UIComponentNew* component) {
     } else if (dynamic_cast<UIEditNew*>(component)) {
         typeName = "Edit";
     }
-    
-    OutputDebugStringA(("GameScene::OnComponentClicked - Component clicked: " + 
-                       std::string(component->name.begin(), component->name.end()) + 
-                       " (Type: " + typeName + ", ID: " + std::to_string(component->id) + ")\n").c_str());
 }
 
 // Factory 函式

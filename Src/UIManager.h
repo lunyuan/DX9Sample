@@ -74,6 +74,19 @@ struct UIComponentNew {
   virtual bool OnKeyDown(WPARAM key) { return false; }
   virtual bool OnChar(WPARAM ch) { return false; }
   
+  // 拖放事件
+  virtual bool IsDraggable() const { return false; }  // 是否可被拖曳
+  virtual bool CanReceiveDrop() const { return false; }  // 是否可接收拖放
+  virtual void OnDragEnter(UIComponentNew* dragged) {}  // 拖曳物進入
+  virtual void OnDragLeave(UIComponentNew* dragged) {}  // 拖曳物離開
+  virtual bool OnDrop(UIComponentNew* dragged) { return false; }  // 拖放完成，返回true表示接受
+  virtual void OnDragStart() {}  // 開始被拖曳
+  virtual void OnDragEnd(bool accepted) {}  // 結束拖曳
+  
+  // 用於保存原始位置
+  int originalX = 0;
+  int originalY = 0;
+  
   virtual void Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureManager* texMgr) = 0;
   
   virtual ~UIComponentNew() = default;
@@ -86,9 +99,17 @@ struct UIImageNew : public UIComponentNew {
   bool useTransparency = true;
   bool draggable = false;
   bool allowDragFromTransparent = false;  // 是否允許從透明區域拖曳，預設為false
+  bool canReceiveDrop = false;  // 是否可接收拖放
   
   void Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureManager* texMgr) override;
   bool OnMouseDown(int x, int y, bool isRightButton) override;
+  
+  // 拖放實現
+  bool IsDraggable() const override { return draggable; }
+  bool CanReceiveDrop() const override { return canReceiveDrop; }
+  void OnDragEnter(UIComponentNew* dragged) override;
+  void OnDragLeave(UIComponentNew* dragged) override;
+  bool OnDrop(UIComponentNew* dragged) override;
 };
 
 // 按鈕組件 - 支援四狀態圖片
@@ -269,6 +290,13 @@ public:
   // 通知監聽器
   void NotifyButtonClicked(UIButtonNew* button);
   void NotifyComponentClicked(UIComponentNew* component);
+  
+  // 序列化支援
+  const std::vector<std::unique_ptr<UIComponentNew>>& GetRootComponents() const override { return rootComponents_; }
+  void AddComponent(std::unique_ptr<UIComponentNew> component) override;
+  
+  // 獲取當前拖放目標
+  UIComponentNew* GetDropTarget() const { return dropTarget_; }
 
 private:
   // Alpha 遮罩快取結構 - 避免每次都鎖定紋理
@@ -301,6 +329,7 @@ private:
   UIComponentNew* focusedComponent_ = nullptr;
   UIComponentNew* hoveredComponent_ = nullptr;
   UIComponentNew* draggedComponent_ = nullptr;
+  UIComponentNew* pressedComponent_ = nullptr;  // Track which component is pressed
   
   // 交互狀態
   int nextId_ = 0;
@@ -308,6 +337,10 @@ private:
   POINT lastMousePos_ = {0, 0};
   POINT dragOffset_ = {0, 0};  // 拖曳開始時的滑鼠相對位置
   bool isDragging_ = false;
+  
+  // 拖放狀態
+  UIComponentNew* dropTarget_ = nullptr;  // 當前的拖放目標
+  bool isInDragDropMode_ = false;  // 是否處於拖放模式
   
   // UI事件監聽器列表
   std::vector<IUIListener*> uiEventListeners_;

@@ -1,5 +1,6 @@
 ﻿#define NOMINMAX
 #include "SkinMesh.h"
+#include <iostream>
 #include <d3dx9.h>
 #include <iostream>
 #include <DirectXMath.h>
@@ -22,10 +23,8 @@ void InitVertexDecl(IDirect3DDevice9* dev) {
   };
   HRESULT hr = dev->CreateVertexDeclaration(decl, &g_pDecl);
   if (FAILED(hr)) {
-    OutputDebugStringA(("Failed to create vertex declaration! HRESULT=0x" + 
-                       std::to_string(hr) + "\n").c_str());
+    std::cerr << "Failed to create vertex declaration! HRESULT=0x" << std::hex << hr << std::dec << std::endl;
   } else {
-    OutputDebugStringA("Vertex declaration created successfully\n");
   }
 }
 
@@ -95,7 +94,6 @@ void SkinMesh::LoadMaterials(IDirect3DDevice9* dev, ID3DXBuffer* materialBuffer,
   auto mats = reinterpret_cast<D3DXMATERIAL*>(materialBuffer->GetBufferPointer());
   materials.resize(numMaterials);
   
-  OutputDebugStringA(("SkinMesh::LoadMaterials - Loading " + std::to_string(numMaterials) + " materials\n").c_str());
   
   for (DWORD i = 0; i < numMaterials; ++i) {
     // 1) 複製 D3DMATERIAL9
@@ -107,15 +105,9 @@ void SkinMesh::LoadMaterials(IDirect3DDevice9* dev, ID3DXBuffer* materialBuffer,
     materials[i].mat.Ambient = materials[i].mat.Diffuse; // 確保環境光與漫反射一致
     
     // 調試：輸出材質屬性
-    char matDebug[256];
-    sprintf_s(matDebug, "  Material %d: Diffuse=(%.2f,%.2f,%.2f,%.2f)\n", 
-              i, materials[i].mat.Diffuse.r, materials[i].mat.Diffuse.g, 
-              materials[i].mat.Diffuse.b, materials[i].mat.Diffuse.a);
-    OutputDebugStringA(matDebug);
     
     // 2) 載入貼圖（如果檔名非空）
     if (mats[i].pTextureFilename && mats[i].pTextureFilename[0] != '\0') {
-      OutputDebugStringA(("  Loading texture: " + std::string(mats[i].pTextureFilename) + "\n").c_str());
       
       HRESULT hr = D3DXCreateTextureFromFileA(
         dev,
@@ -125,21 +117,15 @@ void SkinMesh::LoadMaterials(IDirect3DDevice9* dev, ID3DXBuffer* materialBuffer,
       if (FAILED(hr)) {
         std::cerr << "Warning: 載入貼圖失敗: "
           << mats[i].pTextureFilename << "\n";
-        OutputDebugStringA(("  Failed to load texture! HRESULT=0x" + 
-                           std::to_string(hr) + "\n").c_str());
         materials[i].tex = nullptr;
       } else {
-        OutputDebugStringA(("  Texture loaded successfully! ptr=" + 
-                           std::to_string((size_t)materials[i].tex) + "\n").c_str());
       }
     }
     else {
-      OutputDebugStringA("  No texture filename specified\n");
       materials[i].tex = nullptr;
     }
   }
   
-  OutputDebugStringA("SkinMesh::LoadMaterials - Finished loading materials\n");
 }
 
 void SkinMesh::ReleaseBuffers() {
@@ -156,12 +142,48 @@ void SkinMesh::SetTexture(IDirect3DDevice9* dev, const std::string& file) {
   }
   // 從檔案建立新貼圖
   HRESULT hr = D3DXCreateTextureFromFileA(dev, file.c_str(), &texture);
+  char debugMsg[256];
   if (FAILED(hr)) {
-    std::cerr << "SetTexture 無法載入貼圖: " << file << std::endl;
+    sprintf_s(debugMsg, "SetTexture 無法載入貼圖: %s (HRESULT: 0x%08X)\n", file.c_str(), hr);
+    OutputDebugStringA(debugMsg);
+  } else {
+    sprintf_s(debugMsg, "SetTexture 成功載入貼圖: %s (texture ptr: %p)\n", file.c_str(), texture);
+    OutputDebugStringA(debugMsg);
+    
+    // 同時更新所有材質的貼圖
+    for (auto& material : materials) {
+      if (material.tex && material.tex != texture) {
+        material.tex->Release();
+      }
+      material.tex = texture;
+      if (texture) {
+        texture->AddRef();  // 增加引用計數
+      }
+    }
+    
+    sprintf_s(debugMsg, "SetTexture: Updated %zu materials with new texture\n", materials.size());
+    OutputDebugStringA(debugMsg);
   }
 }
 
 void SkinMesh::Draw(IDirect3DDevice9* dev) {
+  static int drawCallCount = 0;
+  if (drawCallCount++ % 600 == 0) {  // 每600次調用輸出一次（約10秒）
+    char debugMsg[512];
+    sprintf_s(debugMsg, "SkinMesh::Draw - vertices: %zu, indices: %zu, texture: %p, materials: %zu\n", 
+              vertices.size(), indices.size(), texture, materials.size());
+    OutputDebugStringA(debugMsg);
+    
+    // 檢查材質中的貼圖
+    for (size_t i = 0; i < materials.size() && i < 2; ++i) {
+      sprintf_s(debugMsg, "  Material[%zu]: tex=%p, diffuse=(%.2f,%.2f,%.2f,%.2f)\n", 
+                i, materials[i].tex,
+                materials[i].mat.Diffuse.r, materials[i].mat.Diffuse.g, 
+                materials[i].mat.Diffuse.b, materials[i].mat.Diffuse.a);
+      OutputDebugStringA(debugMsg);
+    }
+  }
+  
   // 1. 世界矩陣（如果你已在外面設定就不用重設）
   //D3DMATRIX matW;
   //XMStoreFloat4x4(reinterpret_cast<DirectX::XMFLOAT4X4*>(&matW),
@@ -171,8 +193,29 @@ void SkinMesh::Draw(IDirect3DDevice9* dev) {
   // 2. 關閉光照（若全域已關可跳過）
   //dev->SetRenderState(D3DRS_LIGHTING, FALSE);
 
-  // 3. 綁定貼圖與取樣器
-  dev->SetTexture(0, texture);
+  // 3. 設置材質（如果有的話）
+  IDirect3DTexture9* texToUse = nullptr;
+  if (!materials.empty()) {
+    // 使用第一個材質
+    dev->SetMaterial(&materials[0].mat);
+    
+    // 如果有材質貼圖，使用材質貼圖，否則使用成員貼圖
+    texToUse = materials[0].tex ? materials[0].tex : texture;
+    dev->SetTexture(0, texToUse);
+  } else {
+    // 設置預設材質（白色）
+    D3DMATERIAL9 defaultMat;
+    ZeroMemory(&defaultMat, sizeof(D3DMATERIAL9));
+    defaultMat.Diffuse.r = defaultMat.Diffuse.g = defaultMat.Diffuse.b = defaultMat.Diffuse.a = 1.0f;
+    defaultMat.Ambient.r = defaultMat.Ambient.g = defaultMat.Ambient.b = defaultMat.Ambient.a = 1.0f;
+    defaultMat.Specular.r = defaultMat.Specular.g = defaultMat.Specular.b = defaultMat.Specular.a = 0.5f;
+    defaultMat.Power = 20.0f;
+    dev->SetMaterial(&defaultMat);
+    
+    texToUse = texture;
+    dev->SetTexture(0, texToUse);
+  }
+  
   dev->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
   dev->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
 
@@ -188,13 +231,22 @@ void SkinMesh::Draw(IDirect3DDevice9* dev) {
   // 設置第二層紋理為禁用
   dev->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
   dev->SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
+  
 
   dev->SetVertexDeclaration(g_pDecl);
+  
+  // 調試：檢查 FVF 和頂點聲明
+  static int fvfCheckCount = 0;
+  if (fvfCheckCount++ % 600 == 0) {  // 每10秒檢查一次
+    char debugMsg[256];
+    sprintf_s(debugMsg, "SkinMesh: Using vertex declaration (g_pDecl=%p)\n", g_pDecl);
+    OutputDebugStringA(debugMsg);
+  }
 
-  //// Debug 用：切到線框模式
-  //dev->SetRenderState(D3DRS_FILLMODE, D3DFILL_WIREFRAME);
-  //// 關掉背面剔除
-  //dev->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+  // 設置正常的渲染模式
+  dev->SetRenderState(D3DRS_FILLMODE, D3DFILL_SOLID);
+  // 開啟背面剔除以提升效能
+  dev->SetRenderState(D3DRS_CULLMODE, D3DCULL_CCW);
 
   // 5. 綁定頂點、索引緩衝並繪製
   dev->SetStreamSource(0, vb, 0, sizeof(Vertex));
@@ -213,16 +265,23 @@ void SkinMesh::Draw(IDirect3DDevice9* dev) {
   static int uvCheckCount = 0;
   if (uvCheckCount++ % 600 == 0 && vertices.size() > 0) { // 每10秒檢查一次
     bool hasValidUV = false;
-    for (size_t i = 0; i < std::min(vertices.size(), size_t(10)); ++i) {
+    char uvMsg[512];
+    sprintf_s(uvMsg, "UV Check - First 5 vertices:\n");
+    OutputDebugStringA(uvMsg);
+    
+    for (size_t i = 0; i < std::min(vertices.size(), size_t(5)); ++i) {
+      sprintf_s(uvMsg, "  Vertex %zu: UV(%.3f, %.3f)\n", 
+                i, vertices[i].uv.x, vertices[i].uv.y);
+      OutputDebugStringA(uvMsg);
+      
       if (vertices[i].uv.x != 0.0f || vertices[i].uv.y != 0.0f) {
         hasValidUV = true;
-        break;
       }
     }
-    char debugMsg[256];
-    sprintf_s(debugMsg, "UV Check: %s valid UV coords (sample: uv[0]=(%.3f,%.3f))\n", 
-              hasValidUV ? "Has" : "No", vertices[0].uv.x, vertices[0].uv.y);
-    OutputDebugStringA(debugMsg);
+    
+    if (!hasValidUV) {
+      OutputDebugStringA("WARNING: All UV coordinates are (0,0)!\n");
+    }
   }
   // 2. 索引越界檢查
   //UINT maxIdx = 0;
@@ -251,10 +310,34 @@ void SkinMesh::Draw(IDirect3DDevice9* dev) {
   //}
   HRESULT hr;
   
+  // 除錯：輸出貼圖狀態
+  static int texCheckCount = 0;
+  if (texCheckCount++ % 60 == 0) {
+    char debugMsg[256];
+    sprintf_s(debugMsg, "SkinMesh::Draw - texture pointer: %p, materials count: %zu\n", 
+              texture, materials.size());
+    OutputDebugStringA(debugMsg);
+    
+    // 檢查目前設定的貼圖
+    IDirect3DBaseTexture9* currentTex = nullptr;
+    dev->GetTexture(0, &currentTex);
+    sprintf_s(debugMsg, "Current texture on stage 0: %p\n", currentTex);
+    OutputDebugStringA(debugMsg);
+    if (currentTex) currentTex->Release();
+  }
+  
   // 如果有通過 SetTexture 設定的紋理，優先使用它
   if (texture) {
     // 使用覆蓋的紋理
     dev->SetTexture(0, texture);
+    
+    // 調試訊息
+    static int setTexCount = 0;
+    if (setTexCount++ % 60 == 0) {
+      char msg[256];
+      sprintf_s(msg, "SkinMesh::Draw - Setting texture %p to stage 0\n", texture);
+      OutputDebugStringA(msg);
+    }
     
     // 如果有材質，只使用材質屬性（不使用材質的紋理）
     if (materials.size() > 0) {
@@ -289,9 +372,6 @@ void SkinMesh::Draw(IDirect3DDevice9* dev) {
         IDirect3DBaseTexture9* currentTex = nullptr;
         dev->GetTexture(0, &currentTex);
         
-        OutputDebugStringA(("Drawing with 1 material, tex=" + 
-                           std::to_string((size_t)materials[0].tex) + 
-                           ", current tex=" + std::to_string((size_t)currentTex) + "\n").c_str());
         
         if (currentTex) currentTex->Release();
       }
@@ -313,9 +393,6 @@ void SkinMesh::Draw(IDirect3DDevice9* dev) {
       
       static int multiDrawCount = 0;
       if (multiDrawCount++ % 300 == 0) {
-        OutputDebugStringA(("Drawing with " + std::to_string(materials.size()) + 
-                           " materials, using first tex=" + 
-                           std::to_string((size_t)materials[0].tex) + "\n").c_str());
       }
       
       // 使用 DrawIndexedPrimitive 而不是 DrawIndexedPrimitiveUP
@@ -372,4 +449,181 @@ void SkinMesh::Draw(IDirect3DDevice9* dev) {
   //  sizeof(Vertex)                // VertexStreamZeroStride
   //);
 
+}
+
+void SkinMesh::DrawWithAnimation(IDirect3DDevice9* dev, ID3DXEffect* effect, const std::vector<DirectX::XMFLOAT4X4>& boneMatrices) {
+    if (!effect || !vb || !ib || vertices.empty() || indices.empty()) {
+        OutputDebugStringA("DrawWithAnimation: Missing required resources\n");
+        return;
+    }
+    
+    char debugMsg[256];
+    sprintf_s(debugMsg, "DrawWithAnimation: Starting render (effect=%p, vb=%p, ib=%p)\n", effect, vb, ib);
+    OutputDebugStringA(debugMsg);
+    
+    // Set bone matrices in the shader
+    if (!boneMatrices.empty()) {
+        // Convert XMFLOAT4X4 to D3DXMATRIX array
+        std::vector<D3DXMATRIX> d3dMatrices(boneMatrices.size());
+        for (size_t i = 0; i < boneMatrices.size() && i < 128; ++i) { // Max 128 bones
+            memcpy(&d3dMatrices[i], &boneMatrices[i], sizeof(D3DXMATRIX));
+        }
+        
+        HRESULT hr = effect->SetMatrixArray("BoneMatrices", d3dMatrices.data(), 
+                              static_cast<UINT>(std::min(boneMatrices.size(), size_t(128))));
+        if (FAILED(hr)) {
+            sprintf_s(debugMsg, "Failed to set BoneMatrices: HRESULT=0x%08X\n", hr);
+            OutputDebugStringA(debugMsg);
+        } else {
+            sprintf_s(debugMsg, "Set %zu bone matrices to shader\n", boneMatrices.size());
+            OutputDebugStringA(debugMsg);
+        }
+    } else {
+        // No animation - set identity matrices
+        OutputDebugStringA("No bone matrices provided, using identity matrices\n");
+        D3DXMATRIX identity;
+        D3DXMatrixIdentity(&identity);
+        std::vector<D3DXMATRIX> identityMatrices(128, identity);
+        effect->SetMatrixArray("BoneMatrices", identityMatrices.data(), 128);
+    }
+    
+    // Set world, view, projection matrices
+    D3DXMATRIX world, view, projection;
+    dev->GetTransform(D3DTS_WORLD, &world);
+    dev->GetTransform(D3DTS_VIEW, &view);
+    dev->GetTransform(D3DTS_PROJECTION, &projection);
+    
+    effect->SetMatrix("World", &world);
+    effect->SetMatrix("View", &view);
+    effect->SetMatrix("Projection", &projection);
+    
+    // Set texture
+    IDirect3DTexture9* texToUse = nullptr;
+    if (!materials.empty() && materials[0].tex) {
+        texToUse = materials[0].tex;
+    } else {
+        texToUse = texture;
+    }
+    
+    if (texToUse) {
+        HRESULT hr = effect->SetTexture("DiffuseTexture", texToUse);
+        if (FAILED(hr)) {
+            sprintf_s(debugMsg, "Failed to set DiffuseTexture: HRESULT=0x%08X\n", hr);
+            OutputDebugStringA(debugMsg);
+        } else {
+            sprintf_s(debugMsg, "Set DiffuseTexture to shader: %p\n", texToUse);
+            OutputDebugStringA(debugMsg);
+        }
+        dev->SetTexture(0, texToUse);  // 也設置到固定管線以防萬一
+    } else {
+        OutputDebugStringA("WARNING: No texture to set in DrawWithAnimation\n");
+    }
+    
+    // Set vertex declaration
+    dev->SetVertexDeclaration(g_pDecl);
+    
+    // Set vertex and index buffers
+    dev->SetStreamSource(0, vb, 0, sizeof(Vertex));
+    dev->SetIndices(ib);
+    
+    // Begin effect
+    UINT passes = 0;
+    effect->Begin(&passes, 0);
+    
+    for (UINT pass = 0; pass < passes; ++pass) {
+        effect->BeginPass(pass);
+        
+        // Draw
+        UINT numVerts = static_cast<UINT>(vertices.size());
+        UINT primCount = static_cast<UINT>(indices.size() / 3);
+        
+        HRESULT hr = dev->DrawIndexedPrimitive(
+            D3DPT_TRIANGLELIST,
+            0,                    // BaseVertexIndex
+            0,                    // MinVertexIndex
+            numVerts,             // NumVertices
+            0,                    // StartIndex
+            primCount             // PrimitiveCount
+        );
+        
+        if (FAILED(hr)) {
+            std::cerr << "DrawIndexedPrimitive failed in animation shader, HRESULT=0x" << std::hex << hr << std::dec << std::endl;
+        }
+        
+        effect->EndPass();
+    }
+    
+    effect->End();
+}
+
+void SkinMesh::DrawWithEffect(IDirect3DDevice9* dev, ID3DXEffect* effect) {
+    if (!effect || !vb || !ib || vertices.empty() || indices.empty()) {
+        OutputDebugStringA("DrawWithEffect: Missing required resources\n");
+        return;
+    }
+    
+    // Set world, view, projection matrices
+    D3DXMATRIX world, view, projection;
+    dev->GetTransform(D3DTS_WORLD, &world);
+    dev->GetTransform(D3DTS_VIEW, &view);
+    dev->GetTransform(D3DTS_PROJECTION, &projection);
+    
+    effect->SetMatrix("World", &world);
+    effect->SetMatrix("View", &view);
+    effect->SetMatrix("Projection", &projection);
+    
+    // Set texture
+    IDirect3DTexture9* texToUse = nullptr;
+    if (!materials.empty() && materials[0].tex) {
+        texToUse = materials[0].tex;
+    } else {
+        texToUse = texture;
+    }
+    
+    if (texToUse) {
+        HRESULT hr = effect->SetTexture("DiffuseTexture", texToUse);
+        if (FAILED(hr)) {
+            char debugMsg[256];
+            sprintf_s(debugMsg, "Failed to set DiffuseTexture in DrawWithEffect: HRESULT=0x%08X\n", hr);
+            OutputDebugStringA(debugMsg);
+        } else {
+            OutputDebugStringA("DrawWithEffect: Texture set successfully\n");
+        }
+    }
+    
+    // Set vertex declaration
+    dev->SetVertexDeclaration(g_pDecl);
+    
+    // Set vertex and index buffers
+    dev->SetStreamSource(0, vb, 0, sizeof(Vertex));
+    dev->SetIndices(ib);
+    
+    // Begin effect
+    UINT passes = 0;
+    effect->Begin(&passes, 0);
+    
+    for (UINT pass = 0; pass < passes; ++pass) {
+        effect->BeginPass(pass);
+        
+        // Draw
+        UINT numVerts = static_cast<UINT>(vertices.size());
+        UINT primCount = static_cast<UINT>(indices.size() / 3);
+        
+        HRESULT hr = dev->DrawIndexedPrimitive(
+            D3DPT_TRIANGLELIST,
+            0,                    // BaseVertexIndex
+            0,                    // MinVertexIndex
+            numVerts,             // NumVertices
+            0,                    // StartIndex
+            primCount             // PrimitiveCount
+        );
+        
+        if (FAILED(hr)) {
+            std::cerr << "DrawIndexedPrimitive failed in DrawWithEffect, HRESULT=0x" << std::hex << hr << std::dec << std::endl;
+        }
+        
+        effect->EndPass();
+    }
+    
+    effect->End();
 }

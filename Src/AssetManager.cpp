@@ -3,6 +3,10 @@
 #include "ModelManager.h"
 #include "TextureManager.h"
 #include "XModelLoader.h"
+#include "XModelEnhanced.h"
+#include "XModelEnhancedLoader.h"
+#include "FbxLoader.h"
+#include "GltfLoader.h"
 #include "ModelData.h"
 #include <d3dx9.h>
 #include <algorithm>
@@ -144,33 +148,42 @@ std::shared_ptr<ModelData> AssetManager::LoadModelImpl(const std::string& fullPa
     
     // 載入模型
     try {
-        std::wstring wPath(fullPath.begin(), fullPath.end());
+        // 根據檔案副檔名選擇適當的載入器
+        fs::path filePath(fullPath);
+        std::string extension = filePath.extension().string();
+        std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
         
-        // 使用 ModelManager 載入
-        modelManager_->LoadModels(wPath, device_);
-        auto modelNames = modelManager_->GetLoadedModelNames();
+        std::unique_ptr<IModelLoader> loader;
+        if (extension == ".fbx") {
+            loader = std::make_unique<FbxLoader>();
+        } else if (extension == ".x") {
+            loader = std::make_unique<XModelLoader>();
+        } else {
+            std::cerr << "Unsupported model format: " << extension << std::endl;
+            return nullptr;
+        }
         
-        if (!modelNames.empty()) {
+        // 直接使用載入器載入模型
+        auto models = loader->Load(filePath, device_);
+        
+        if (!models.empty()) {
             // 取得第一個模型
-            const ModelData* modelPtr = modelManager_->GetModel(modelNames[0]);
-            if (modelPtr) {
-                auto modelData = std::make_shared<ModelData>(*modelPtr);
-                
-                // 加入快取
-                {
-                    std::lock_guard<std::shared_mutex> lock(assetMutex_);
-                    AssetItem& item = assets_[key];
-                    item.path = fullPath;
-                    item.type = AssetType::Model;
-                    item.state = AssetLoadState::Loaded;
-                    item.data = modelData;
-                    item.refCount = 1;
-                    item.lastAccessed = std::chrono::steady_clock::now();
-                }
-                
-                loadOperations_++;
-                return modelData;
+            auto modelData = std::make_shared<ModelData>(std::move(models.begin()->second));
+            
+            // 加入快取
+            {
+                std::lock_guard<std::shared_mutex> lock(assetMutex_);
+                AssetItem& item = assets_[key];
+                item.path = fullPath;
+                item.type = AssetType::Model;
+                item.state = AssetLoadState::Loaded;
+                item.data = modelData;
+                item.refCount = 1;
+                item.lastAccessed = std::chrono::steady_clock::now();
             }
+            
+            loadOperations_++;
+            return modelData;
         }
     }
     catch (const std::exception& e) {
@@ -194,42 +207,56 @@ std::vector<std::shared_ptr<ModelData>> AssetManager::LoadAllModelsImpl(const st
     std::string baseKey = GenerateAssetKey(fullPath);
     
     try {
-        std::wstring wPath(fullPath.begin(), fullPath.end());
+        // 根據檔案副檔名選擇適當的載入器
+        fs::path filePath(fullPath);
+        std::string extension = filePath.extension().string();
+        std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
         
-        // 使用 ModelManager 載入所有模型
-        modelManager_->LoadModels(wPath, device_);
-        auto modelNames = modelManager_->GetLoadedModelNames();
+        // Use unified IModelLoader interface for all formats
+        std::unique_ptr<IModelLoader> loader;
         
-        OutputDebugStringA(("LoadAllModelsImpl: Found " + std::to_string(modelNames.size()) + " models in " + fullPath + "\n").c_str());
+        if (extension == ".x") {
+            // Use enhanced loader for .x files to get proper separation
+            loader = std::make_unique<XModelEnhancedLoader>();
+        } else if (extension == ".fbx") {
+            loader = std::make_unique<FbxLoader>();
+        /* TODO: Implement IModelLoader for GltfLoader
+        } else if (extension == ".gltf") {
+            loader = std::make_unique<GltfLoader>();
+        */
+        } else {
+            std::cerr << "Unsupported model format: " << extension << std::endl;
+            return result;
+        }
         
-        for (const auto& modelName : modelNames) {
-            const ModelData* modelPtr = modelManager_->GetModel(modelName);
-            if (modelPtr) {
-                auto modelData = std::make_shared<ModelData>(*modelPtr);
-                result.push_back(modelData);
-                
-                // 加入快取，使用模型名稱作為鍵值的一部分
-                std::string key = baseKey + "::" + modelName;
-                {
-                    std::lock_guard<std::shared_mutex> lock(assetMutex_);
-                    AssetItem& item = assets_[key];
-                    item.path = fullPath + "::" + modelName;
-                    item.type = AssetType::Model;
-                    item.state = AssetLoadState::Loaded;
-                    item.data = modelData;
-                    item.refCount = 1;
-                    item.lastAccessed = std::chrono::steady_clock::now();
-                }
-                
-                OutputDebugStringA(("  - Loaded model: " + modelName + "\n").c_str());
+        // Load models using the unified interface
+        auto models = loader->Load(filePath, device_);
+        
+        
+        for (auto& [modelName, modelData] : models) {
+            auto sharedModelData = std::make_shared<ModelData>(std::move(modelData));
+            result.push_back(sharedModelData);
+            
+            // 加入快取，使用模型名稱作為鍵值的一部分
+            std::string key = baseKey + "::" + modelName;
+            {
+                std::lock_guard<std::shared_mutex> lock(assetMutex_);
+                AssetItem& item = assets_[key];
+                item.path = fullPath + "::" + modelName;
+                item.type = AssetType::Model;
+                item.state = AssetLoadState::Loaded;
+                item.data = sharedModelData;
+                item.refCount = 1;
+                item.lastAccessed = std::chrono::steady_clock::now();
             }
+            
         }
         
         loadOperations_++;
     }
     catch (const std::exception& e) {
         std::cerr << "Failed to load models from " << fullPath << ": " << e.what() << std::endl;
-        OutputDebugStringA(("LoadAllModelsImpl error: " + std::string(e.what()) + "\n").c_str());
+        std::cerr << "LoadAllModelsImpl error: " << e.what() << std::endl;
     }
     
     return result;

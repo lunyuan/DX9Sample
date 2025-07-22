@@ -13,8 +13,12 @@ CameraController::CameraController(IDirect3DDevice9* dev, int width, int height)
   m_dev->AddRef();
   m_width = width;
   m_height = height;
-  // 初始參數（可自訂）
-  m_currentDist = m_targetDist = 10.0f;
+  // 初始參數（從上方俯視）
+  m_currentDist = m_targetDist = 20.0f;  // 相機高度 - 調整為更近的距離
+  m_currentYaw = m_targetYaw = 0.0f;     // 方位角 (0度)
+  m_currentPitch = m_targetPitch = -XM_PI / 2.0f;  // 俯視角度 (-90度)
+  // Set camera to look at origin (where models are placed)
+  m_currentAt = m_targetAt = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
 }
 CameraController::~CameraController() {
   if (m_dev) {
@@ -142,19 +146,32 @@ void CameraController::SetupCamera()
   m_currentDist += (m_targetDist - m_currentDist) * kSmoothing;
   m_currentAt = XMVectorLerp(m_currentAt, m_targetAt, kSmoothing);
 
-  // 2. 計算攝影機位置
-  XMVECTOR dir = XMVectorSet(
-    cosf(m_currentPitch) * sinf(m_currentYaw),
-    sinf(m_currentPitch),
-    cosf(m_currentPitch) * cosf(m_currentYaw),
-    0.0f
-  );
-  XMVECTOR camPos = m_currentAt - dir * m_currentDist;
+  // 2. 計算攝影機位置 (直接設定為上方俯視)
+  XMVECTOR camPos;
+  
+  // 檢查是否為初始俯視角度
+  if (fabs(m_currentPitch + XM_PI / 2.0f) < 0.01f && fabs(m_currentYaw) < 0.01f) {
+    // 直接設定相機在正上方
+    camPos = m_currentAt + XMVectorSet(0.0f, m_currentDist, 0.0f, 0.0f);
+  } else {
+    // 使用原本的球面座標計算
+    XMVECTOR dir = XMVectorSet(
+      cosf(m_currentPitch) * sinf(m_currentYaw),
+      sinf(m_currentPitch),
+      cosf(m_currentPitch) * cosf(m_currentYaw),
+      0.0f
+    );
+    camPos = m_currentAt - dir * m_currentDist;
+  }
 
   // 3. 建立 View 與 Projection
-  XMMATRIX view = XMMatrixLookAtLH(camPos, m_currentAt, XMVectorSet(0, 1, 0, 0));
+  XMVECTOR upVector = XMVectorSet(0, 0, -1, 0);  // 俯視時使用Z軸作為上方向
+  if (fabs(m_currentPitch + XM_PI / 2.0f) > 0.01f) {
+    upVector = XMVectorSet(0, 1, 0, 0);  // 非俯視時使用Y軸
+  }
+  XMMATRIX view = XMMatrixLookAtLH(camPos, m_currentAt, upVector);
   XMMATRIX proj = XMMatrixPerspectiveFovLH(XM_PIDIV4,
-    float(m_width) / float(m_height), 0.1f, 100.0f);
+    float(m_width) / float(m_height), 1.0f, 500.0f);  // 增加far plane距離
 
   // 4. 存成 D3DMATRIX 並設定
   XMFLOAT4X4 vf, pf;

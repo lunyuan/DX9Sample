@@ -68,6 +68,12 @@ struct IUIManager : public IInputListener {
   // UI事件監聽器管理
   virtual void AddUIListener(IUIListener* listener) = 0;
   virtual void RemoveUIListener(IUIListener* listener) = 0;
+  
+  // 序列化支援
+  virtual const std::vector<std::unique_ptr<UIComponentNew>>& GetRootComponents() const = 0;
+  
+  // 添加元件到根層級
+  virtual void AddComponent(std::unique_ptr<UIComponentNew> component) = 0;
 };
 
 // Forward declaration

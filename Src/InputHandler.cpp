@@ -16,7 +16,6 @@ HRESULT InputHandler::ProcessMessages() {
   
   while (PeekMessage(&msg, hwnd_, 0, 0, PM_REMOVE)) {
     if (msg.message == WM_QUIT || msg.message == WM_CLOSE || msg.message == WM_DESTROY) {
-      OutputDebugStringA("*** Exit message received ***\n");
       return S_FALSE;
     }
     

@@ -159,7 +159,6 @@
     <ClCompile Include="Src\ImprovedTextureManager.cpp" />
     <ClCompile Include="Src\InputHandler.cpp" />
     <ClCompile Include="Src\JsonConfigManager.cpp" />
-    <ClCompile Include="Src\Loader.cpp" />
     <ClCompile Include="Src\main.cpp" />
     <ClCompile Include="Src\ModelManager.cpp" />
     <ClCompile Include="Src\RenderTargetManager.cpp" />
@@ -171,9 +170,11 @@
     <ClCompile Include="Src\stb_image_impl.cpp" />
     <ClCompile Include="Src\TextureManager.cpp" />
     <ClCompile Include="Src\UIManager.cpp" />
+    <ClCompile Include="Src\UISerializer.cpp" />
     <ClCompile Include="Src\Visualizer.cpp" />
-    <ClCompile Include="Src\XFileLoader.cpp" />
     <ClCompile Include="Src\XModelLoader.cpp" />
+    <ClCompile Include="Src\XModelEnhanced.cpp" />
+    <ClCompile Include="Src\XModelEnhancedLoader.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Src\AnimationPlayer.h" />
@@ -217,7 +218,6 @@
     <ClInclude Include="Src\json.hpp" />
     <ClInclude Include="Src\JsonConfigManager.h" />
     <ClInclude Include="Src\LightManager.h" />
-    <ClInclude Include="Src\Loader.h" />
     <ClInclude Include="Src\ModelData.h" />
     <ClInclude Include="Src\ModelManager.h" />
     <ClInclude Include="Src\RenderTargetManager.h" />
@@ -231,12 +231,14 @@
     <ClInclude Include="Src\TextureManager.h" />
     <ClInclude Include="Src\tiny_gltf.h" />
     <ClInclude Include="Src\UIManager.h" />
+    <ClInclude Include="Src\UISerializer.h" />
     <ClInclude Include="Src\UniqueWithWeak.h" />
     <ClInclude Include="Src\Utilities.h" />
     <ClInclude Include="Src\Visualizer.h" />
-    <ClInclude Include="Src\XFileLoader.h" />
     <ClInclude Include="Src\XFileTypes.h" />
     <ClInclude Include="Src\XModelLoader.h" />
+    <ClInclude Include="Src\XModelEnhanced.h" />
+    <ClInclude Include="Src\XModelEnhancedLoader.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

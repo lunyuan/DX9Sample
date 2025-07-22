@@ -5,6 +5,7 @@
 #include <cstring>           // std::memcpy
 #include <stdexcept>         // std::runtime_error
 #include <algorithm>         // std::transform
+#include <iostream>
 #include <vector>            // std::vector
 #include <cctype>            // ::tolower, ::toupper
 #include "AllocateHierarchy.h"
@@ -79,65 +80,79 @@ STDMETHODIMP AllocateHierarchy::CreateMeshContainer(
   mc->NumMaterials = numMaterials;
   mc->m_Textures.resize(numMaterials);
   mc->m_pMaterials = new D3DMATERIAL9[numMaterials];
+  
+  // 設定基類的 pMaterials 指標
+  mc->pMaterials = new D3DXMATERIAL[numMaterials];
+  
   for (UINT i = 0; i < numMaterials; i++) {
-    if (pMaterials[i].pTextureFilename) {
-      // 輸出調試訊息
-      OutputDebugStringA(("Loading texture: " + std::string(pMaterials[i].pTextureFilename) + "\n").c_str());
+    // 複製材質資料
+    mc->pMaterials[i].MatD3D = pMaterials[i].MatD3D;
+    mc->pMaterials[i].pTextureFilename = nullptr;  // 我們不需要檔名，已經載入貼圖
+    mc->m_pMaterials[i] = pMaterials[i].MatD3D;
+    // 載入材質中的貼圖
+    if (pMaterials[i].pTextureFilename != nullptr) {
+      char debugMsg[512];
+      sprintf_s(debugMsg, "AllocateHierarchy: Attempting to load texture: %s\n", pMaterials[i].pTextureFilename);
+      OutputDebugStringA(debugMsg);
       
-      HRESULT texHr = D3DXCreateTextureFromFileA(
+      // 嘗試原始檔名
+      HRESULT hr = D3DXCreateTextureFromFileA(
         m_device,
         pMaterials[i].pTextureFilename,
-        &mc->m_Textures[i]);
+        &mc->m_Textures[i]
+      );
+      
+      // 如果失敗，嘗試小寫版本
+      if (FAILED(hr)) {
+        std::string lowerName = pMaterials[i].pTextureFilename;
+        std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
         
-      if (FAILED(texHr)) {
-        OutputDebugStringA(("Failed to load texture: " + std::string(pMaterials[i].pTextureFilename) + " (HRESULT: 0x" + std::to_string(texHr) + ")\n").c_str());
+        sprintf_s(debugMsg, "AllocateHierarchy: Original failed, trying lowercase: %s\n", lowerName.c_str());
+        OutputDebugStringA(debugMsg);
         
-        // 嘗試不同的大小寫組合
-        std::string originalFilename(pMaterials[i].pTextureFilename);
-        std::vector<std::string> caseVariations;
-        
-        // 1. 全部小寫
-        std::string lowercase = originalFilename;
-        std::transform(lowercase.begin(), lowercase.end(), lowercase.begin(), ::tolower);
-        caseVariations.push_back(lowercase);
-        
-        // 2. 首字母大寫，其餘小寫 (e.g., "Horse3.bmp")
-        std::string titleCase = lowercase;
-        if (!titleCase.empty()) {
-          titleCase[0] = std::toupper(titleCase[0]);
-        }
-        caseVariations.push_back(titleCase);
-        
-        // 3. 全部大寫
-        std::string uppercase = originalFilename;
-        std::transform(uppercase.begin(), uppercase.end(), uppercase.begin(), ::toupper);
-        caseVariations.push_back(uppercase);
-        
-        // 嘗試每個變體
-        for (const auto& variant : caseVariations) {
-          if (variant != originalFilename) {  // 避免重複嘗試原始名稱
-            OutputDebugStringA(("Trying case variant: " + variant + "\n").c_str());
-            texHr = D3DXCreateTextureFromFileA(
-              m_device,
-              variant.c_str(),
-              &mc->m_Textures[i]);
-              
-            if (SUCCEEDED(texHr)) {
-              OutputDebugStringA(("Texture loaded successfully with case variant: " + variant + "\n").c_str());
-              break;
-            }
-          }
-        }
-        
-        if (FAILED(texHr)) {
-          // 如果所有變體都失敗，輸出最終錯誤
-          OutputDebugStringA("Failed to load texture with all case variations\n");
-        }
-      } else {
-        OutputDebugStringA("Texture loaded successfully\n");
+        hr = D3DXCreateTextureFromFileA(
+          m_device,
+          lowerName.c_str(),
+          &mc->m_Textures[i]
+        );
       }
+      
+      // 如果還是失敗，使用替代貼圖
+      if (FAILED(hr)) {
+        // 檢查是否為 RED.BMP，使用 Horse4.bmp 作為替代
+        std::string filename = pMaterials[i].pTextureFilename;
+        std::transform(filename.begin(), filename.end(), filename.begin(), ::toupper);
+        
+        if (filename == "RED.BMP") {
+          sprintf_s(debugMsg, "AllocateHierarchy: RED.BMP not found, using Horse4.bmp as fallback\n");
+          OutputDebugStringA(debugMsg);
+          
+          hr = D3DXCreateTextureFromFileA(
+            m_device,
+            "Horse4.bmp",
+            &mc->m_Textures[i]
+          );
+        }
+      }
+      
+      if (FAILED(hr)) {
+        mc->m_Textures[i] = nullptr;
+        sprintf_s(debugMsg, "AllocateHierarchy: Failed to load texture: %s (HRESULT: 0x%08X)\n", 
+                  pMaterials[i].pTextureFilename, hr);
+        OutputDebugStringA(debugMsg);
+      } else {
+        sprintf_s(debugMsg, "AllocateHierarchy: Successfully loaded texture: %s (ptr: %p)\n", 
+                  pMaterials[i].pTextureFilename, mc->m_Textures[i]);
+        OutputDebugStringA(debugMsg);
+      }
+    } else {
+      mc->m_Textures[i] = nullptr;
     }
-    mc->m_pMaterials[i] = pMaterials[i].MatD3D;
+    
+    // 如果需要調試，可以輸出被跳過的貼圖名稱
+    if (pMaterials[i].pTextureFilename) {
+      // std::cout << "Skipping texture from model: " << pMaterials[i].pTextureFilename << std::endl;
+    }
   }
   // 備份 adjacency
   hr = D3DXCreateBuffer(numMaterials * 3 * sizeof(DWORD), &mc->m_pAdjacency);
@@ -174,6 +189,7 @@ STDMETHODIMP AllocateHierarchy::DestroyMeshContainer(
   if (mc->m_pBoneCombinationBuf) mc->m_pBoneCombinationBuf->Release();
   if (mc->MeshData.pMesh) mc->MeshData.pMesh->Release();
   delete[] mc->m_pMaterials;
+  delete[] mc->pMaterials;  // 釋放基類的材質陣列
   delete mc;
   return S_OK;
 }

@@ -5,7 +5,10 @@
 #include "IEventManager.h"
 #include "IUIListener.h"
 #include <memory>
+#include <map>
+#include <vector>
 #include <d3d9.h>
+#include <d3dx9.h>
 
 // Forward declarations
 struct IScene;
@@ -49,6 +52,8 @@ private:
     // UI 相關
     void CreateGameUI();
     void CreatePersistentHUD();
+    void SaveUILayout();
+    void LoadUILayout();
     
     // 事件處理
     void OnUIComponentClicked(const Events::UIComponentClicked& event);
@@ -68,6 +73,7 @@ private:
     // 輔助方法
     bool CheckLevelUp(const std::string& playerId, int experience);
     void TriggerScoreIncrease(int points, const std::string& reason);
+    void SaveModelsInDifferentFormats(const std::vector<std::shared_ptr<ModelData>>& models);
     
     // UI 層級 - 已移除，使用 UIManager
     
@@ -92,7 +98,11 @@ private:
     
     // 3D 模型
     std::vector<std::shared_ptr<ModelData>> loadedModels_;  // 存儲所有載入的模型
+    std::map<std::string, std::shared_ptr<ModelData>> namedModels_;  // 按名稱存儲的模型
     std::shared_ptr<IDirect3DTexture9> loadedTexture_; // 存儲載入的紋理
+    ID3DXEffect* skeletalAnimationEffect_ = nullptr; // 骨骼動畫shader
+    ID3DXEffect* simpleTextureEffect_ = nullptr; // 簡單貼圖shader
+    float animationTime_ = 0.0f; // 動畫時間
 };
 
 // Factory 函式聲明

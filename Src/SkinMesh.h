@@ -62,4 +62,6 @@ public:
   void Draw(IDirect3DDevice9* dev);
   /// 釋放緩衝資源
   void ReleaseBuffers();
+  void DrawWithAnimation(IDirect3DDevice9* dev, ID3DXEffect* effect, const std::vector<DirectX::XMFLOAT4X4>& boneMatrices);
+  void DrawWithEffect(IDirect3DDevice9* dev, ID3DXEffect* effect);
 };

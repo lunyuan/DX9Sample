@@ -26,7 +26,6 @@ protected:
   virtual int overflow(int c) override {
     if (c != EOF) {
       char ch = static_cast<char>(c);
-      OutputDebugStringA(std::string(1, ch).c_str());
     }
     return c;
   }
@@ -178,13 +177,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
  // g_pd3dDevice->SetLight(0, &light);
  // g_pd3dDevice->LightEnable(0, TRUE);
  // g_pd3dDevice->SetRenderState(D3DRS_LIGHTING, TRUE);
- // // Setup window, call InitD3D...
- // SkinMesh mesh; Skeleton skel;
- // //XFileLoader::Load(L"world.x", g_pd3dDevice, mesh, skel);
- // XFileLoader::Load(L"horse_group.x", g_pd3dDevice, mesh, skel);
- // mesh.CreateBuffers(g_pd3dDevice);
- //// mesh.SetTexture(g_pd3dDevice, "World.bmp");
- // mesh.SetTexture(g_pd3dDevice, "Horse4.bmp");
 
  // //Loader::LoadGltf("AnimatedModel.glb", mesh, skel);
  // //Exporter::ExportGltf("Converted.glb", mesh, skel);
