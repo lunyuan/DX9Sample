@@ -1,6 +1,10 @@
 ﻿#include "UIManager.h"
 #include <algorithm>
 #include <string>
+#include <windowsx.h>  // For GET_X_LPARAM and GET_Y_LPARAM
+#include "UICoordinateFix.h"
+#include <iostream>
+#include <set>
 
 // Factory 函式實作
 std::unique_ptr<IUIManager> CreateUIManager(ITextureManager* textureManager) {
@@ -10,21 +14,36 @@ std::unique_ptr<IUIManager> CreateUIManager(ITextureManager* textureManager) {
 UIManager::UIManager(ITextureManager* textureManager) 
   : textureManager_(textureManager) {
   // 創建預設層 (layer 0)
-  CreateLayer(L"Default", 1.0f);
+  CreateLayer(L"Default", 0.0f, 1.0f);
 }
 
 STDMETHODIMP UIManager::Init(IDirect3DDevice9* dev) {
-  if (!dev) return E_INVALIDARG;
+  if (!dev) {
+    std::cerr << "UIManager::Init failed: Invalid device pointer" << std::endl;
+    return E_INVALIDARG;
+  }
   HRESULT hr = D3DXCreateFont(dev, 24, 0, FW_NORMAL, 0, FALSE, DEFAULT_CHARSET,
     OUT_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE,
     L"Arial", &font_);
-  if (FAILED(hr)) return hr;
+  if (FAILED(hr)) {
+    std::cerr << "UIManager::Init failed: Could not create font" << std::endl;
+    return hr;
+  }
   hr = D3DXCreateSprite(dev, &sprite_);
+  if (FAILED(hr)) {
+    std::cerr << "UIManager::Init failed: Could not create sprite" << std::endl;
+  }
   return hr;
 }
 
 STDMETHODIMP UIManager::Render(IDirect3DDevice9* dev) {
-  if (!dev || !font_ || !sprite_) return E_POINTER;
+  if (!dev || !font_ || !sprite_) {
+    if (!dev) std::cerr << "UIManager::Render failed: Invalid device pointer" << std::endl;
+    if (!font_) std::cerr << "UIManager::Render failed: Font not initialized" << std::endl;
+    if (!sprite_) std::cerr << "UIManager::Render failed: Sprite not initialized" << std::endl;
+    return E_POINTER;
+  }
+  
   
   SortElementsByLayer();
   
@@ -34,13 +53,31 @@ STDMETHODIMP UIManager::Render(IDirect3DDevice9* dev) {
   dev->GetRenderState(D3DRS_SRCBLEND, &oldSrcBlend);
   dev->GetRenderState(D3DRS_DESTBLEND, &oldDestBlend);
   
-  // 設定alpha混合
+  // 設定alpha混合 - 使用正確的 alpha 混合模式
   dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
   dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
   dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
   
-  // 設定alpha混合狀態
-  sprite_->Begin(D3DXSPRITE_ALPHABLEND | D3DXSPRITE_SORT_TEXTURE);
+  // 關閉 Z 緩衝區以避免 UI 問題
+  dev->SetRenderState(D3DRS_ZENABLE, FALSE);
+  
+  // 設定顏色鍵 (Color Key) - 綠色透明
+  // 注意: D3DXSprite 不直接支援顏色鍵，需要在載入紋理時處理
+  
+  // 不要設定任何變換矩陣給 D3D 裝置 - 只在 2D UI 中使用
+  // 文字使用的是螢幕空間座標，sprite 也應該一樣
+  
+  // 設定alpha混合狀態 - 不要排序以避免問題
+  sprite_->Begin(D3DXSPRITE_ALPHABLEND | D3DXSPRITE_DONOTSAVESTATE);
+  
+  // 在 Begin 之後設定單位矩陣
+  D3DXMATRIX identityMatrix;
+  D3DXMatrixIdentity(&identityMatrix);
+  sprite_->SetTransform(&identityMatrix);
+  
+  // 診斷輸出視窗和視圖設定 - 已移除以減少噪音
+  
+  // 不要修改 D3D 變換矩陣 - Sprite 在螢幕空間工作
   
   // 渲染圖片元素
   for (const auto& img : imageElements_) {
@@ -49,6 +86,8 @@ STDMETHODIMP UIManager::Render(IDirect3DDevice9* dev) {
     if (textureManager_) {
       auto texture = textureManager_->Load(img.imagePath);
       if (texture) {
+        // 診斷特定圖片的座標 - 已移除
+        
         D3DXVECTOR3 pos(float(img.destRect.left), float(img.destRect.top), 0.0f);
         
         // 計算縮放
@@ -57,9 +96,7 @@ STDMETHODIMP UIManager::Render(IDirect3DDevice9* dev) {
           float scaleX = float(img.destRect.right - img.destRect.left) / float(desc.Width);
           float scaleY = float(img.destRect.bottom - img.destRect.top) / float(desc.Height);
           
-          D3DXMATRIX scale, transform;
-          D3DXMatrixScaling(&scale, scaleX, scaleY, 1.0f);
-          sprite_->SetTransform(&scale);
+          // 暫時不使用縮放 - 直接以原始大小顯示
         }
         
         // 設定透明度 - 結合圖片顏色和層級透明度
@@ -88,9 +125,6 @@ STDMETHODIMP UIManager::Render(IDirect3DDevice9* dev) {
   // 渲染按鈕
   RenderButtons(dev);
   
-  // 渲染新組件系統
-  RenderComponents(dev, rootComponents_);
-  
   // 渲染文字元素
   for (const auto& text : textElements_) {
     if (text.layer >= layers_.size() || !layers_[text.layer].visible) continue;
@@ -104,6 +138,9 @@ STDMETHODIMP UIManager::Render(IDirect3DDevice9* dev) {
     RECT rect = text.rect;
     font_->DrawText(sprite_.Get(), text.text.c_str(), -1, &rect, text.format, finalColor);
   }
+  
+  // 渲染新組件系統（需要在 sprite 內渲染圖片）
+  RenderComponents(dev, rootComponents_);
   
   sprite_->End();
   
@@ -125,21 +162,69 @@ bool UIManager::HandleMessage(const MSG& msg) {
   }
   
   // 新的事件委派系統
-  int mouseX = LOWORD(msg.lParam);
-  int mouseY = HIWORD(msg.lParam);
+  // 使用 GET_X_LPARAM 和 GET_Y_LPARAM 正確獲取滑鼠座標
+  // 這些宏能正確處理多螢幕和高DPI情況
+  int mouseX = GET_X_LPARAM(msg.lParam);
+  int mouseY = GET_Y_LPARAM(msg.lParam);
   
   switch (msg.message) {
     case WM_MOUSEMOVE: {
+      // 優先處理拖曳
+      if (draggedComponent_ && isDragging_) {
+        // 計算新的絕對位置（滑鼠位置 - 拖曳偏移）
+        int newAbsX = mouseX - dragOffset_.x;
+        int newAbsY = mouseY - dragOffset_.y;
+        
+        // 如果有父組件，需要轉換為相對座標
+        if (draggedComponent_->parent) {
+          RECT parentRect = draggedComponent_->parent->GetAbsoluteRect();
+          draggedComponent_->relativeX = newAbsX - parentRect.left;
+          draggedComponent_->relativeY = newAbsY - parentRect.top;
+        } else {
+          // 沒有父組件，直接使用絕對座標
+          draggedComponent_->relativeX = newAbsX;
+          draggedComponent_->relativeY = newAbsY;
+        }
+        
+        // 檢查是否有拖放目標
+        if (isInDragDropMode_) {
+          UIComponentNew* targetComponent = GetComponentAt(mouseX, mouseY);
+          
+          // 忽略拖曳的組件本身
+          if (targetComponent == draggedComponent_) {
+            targetComponent = nullptr;
+          }
+          
+          // 處理拖放目標變化
+          if (targetComponent != dropTarget_) {
+            // 離開舊目標
+            if (dropTarget_ && dropTarget_->CanReceiveDrop()) {
+              dropTarget_->OnDragLeave(draggedComponent_);
+            }
+            
+            dropTarget_ = targetComponent;
+            
+            // 進入新目標
+            if (dropTarget_ && dropTarget_->CanReceiveDrop()) {
+              dropTarget_->OnDragEnter(draggedComponent_);
+            }
+          }
+        }
+        
+        return true; // 拖曳中，攔截所有滑鼠移動事件
+      }
+      
+      // 沒有在拖曳時才處理 hover 狀態
       UIComponentNew* component = GetComponentAt(mouseX, mouseY);
       
       // 處理hover狀態變化
       if (hoveredComponent_ != component) {
         // 清除舊的hover狀態
         if (hoveredComponent_) {
-          if (auto* btn = dynamic_cast<UIButtonNew*>(hoveredComponent_)) {
-            if (btn->state == UIButtonNew::State::Hover) {
-              btn->state = UIButtonNew::State::Normal;
-            }
+          // 直接嘗試轉換，但使用更安全的方式
+          auto* btn = dynamic_cast<UIButtonNew*>(hoveredComponent_);
+          if (btn && btn->state == UIButtonNew::State::Hover) {
+            btn->state = UIButtonNew::State::Normal;
           }
         }
         
@@ -151,28 +236,18 @@ bool UIManager::HandleMessage(const MSG& msg) {
         }
       }
       
-      // 處理拖曳
-      if (draggedComponent_) {
-        int deltaX = mouseX - lastMousePos_.x;
-        int deltaY = mouseY - lastMousePos_.y;
-        
-        // 只有當有實際移動時才更新位置
-        if (deltaX != 0 || deltaY != 0) {
-          // 調試輸出
-          OutputDebugStringA(("Drag: deltaX=" + std::to_string(deltaX) + ", deltaY=" + std::to_string(deltaY) + 
-                             ", oldPos=(" + std::to_string(draggedComponent_->relativeX) + "," + std::to_string(draggedComponent_->relativeY) + ")").c_str());
-          
-          // 移動被拖曳的組件 - 使用1:1移動比率
-          draggedComponent_->relativeX += deltaX;
-          draggedComponent_->relativeY += deltaY;
-          
-          // 調試輸出
-          OutputDebugStringA((" -> newPos=(" + std::to_string(draggedComponent_->relativeX) + "," + std::to_string(draggedComponent_->relativeY) + ")\n").c_str());
-          
-          // 更新最後滑鼠位置
-          lastMousePos_ = {mouseX, mouseY};
+      // 處理按下的按鈕狀態
+      if (pressedComponent_) {
+        auto* pressedBtn = dynamic_cast<UIButtonNew*>(pressedComponent_);
+        if (pressedBtn) {
+          if (component == pressedComponent_) {
+            // 滑鼠在按下的按鈕上
+            pressedBtn->state = UIButtonNew::State::Pressed;
+          } else {
+            // 滑鼠離開按下的按鈕
+            pressedBtn->state = UIButtonNew::State::Normal;
+          }
         }
-        return true;
       }
       
       return component != nullptr; // 如果滑鼠在UI上，阻止相機處理
@@ -180,65 +255,185 @@ bool UIManager::HandleMessage(const MSG& msg) {
     
     case WM_LBUTTONDOWN:
     case WM_RBUTTONDOWN: {
-      UIComponentNew* component = GetComponentAt(mouseX, mouseY);
-      OutputDebugStringA(("Click at (" + std::to_string(mouseX) + "," + std::to_string(mouseY) + 
-                         "), found component: " + (component ? "YES" : "NO") + "\n").c_str());
+      bool isRightButton = (msg.message == WM_RBUTTONDOWN);
+      
+      // 對於左鍵，先嘗試取得可拖曳的元件
+      UIComponentNew* component = nullptr;
+      if (!isRightButton) {
+        component = GetDraggableComponentAt(mouseX, mouseY);
+      }
+      
+      // 如果沒有找到可拖曳元件，或是右鍵，則使用一般的檢測
+      if (!component) {
+        component = GetComponentAt(mouseX, mouseY);
+      }
+      
       if (component) {
-        bool isRightButton = (msg.message == WM_RBUTTONDOWN);
+        // 記錄按下的組件
+        if (!isRightButton) {
+          pressedComponent_ = component;
+          
+          // 檢查是否可拖曳（左鍵拖曳）
+          if (component->IsDraggable()) {
+            // 保存原始位置
+            component->originalX = component->relativeX;
+            component->originalY = component->relativeY;
+            
+            // 開始拖曳
+            draggedComponent_ = component;
+            RECT rect = component->GetAbsoluteRect();
+            dragOffset_.x = mouseX - rect.left;
+            dragOffset_.y = mouseY - rect.top;
+            
+            SetCapture(msg.hwnd);
+            isDragging_ = true;
+            // 只有在 DragDrop 模式時才啟用拖放模式
+            isInDragDropMode_ = (component->dragMode == DragMode::DragDrop);
+            
+            // 通知組件開始拖曳
+            component->OnDragStart();
+            
+            // 重要：拖曳開始時必須返回 true 以阻止相機處理
+            return true;
+          }
+        }
+        
         bool handled = component->OnMouseDown(mouseX, mouseY, isRightButton);
         
         // 設定焦點
         SetFocusedComponent(component);
         
-        // 檢查是否開始拖曳
-        if (isRightButton) {
-          // 只有點擊到可拖曳的圖片組件本身才能拖曳，不允許透過子組件拖曳
-          if (auto* img = dynamic_cast<UIImageNew*>(component)) {
-            if (img->draggable && !img->parent) { // 只有根組件且可拖曳
-              // 檢查點擊位置是否在非透明區域
-              RECT componentRect = component->GetAbsoluteRect();
-              if (!IsPointInTransparentArea(mouseX, mouseY, img->imagePath, componentRect)) {
-                draggedComponent_ = component;
-                lastMousePos_ = {mouseX, mouseY};
-                SetCapture(msg.hwnd); // 捕獲滑鼠，確保拖曳期間UI有完全控制權
-                OutputDebugStringA(("Start dragging background at (" + 
-                                  std::to_string(component->relativeX) + "," + 
-                                  std::to_string(component->relativeY) + ")\n").c_str());
-              }
-            }
-          }
-        }
-        
         return handled;
       } else {
         // 點擊空白區域，清除焦點
         SetFocusedComponent(nullptr);
+        return false; // 讓其他系統處理
       }
       break;
     }
     
     case WM_LBUTTONUP:
     case WM_RBUTTONUP: {
-      if (draggedComponent_) {
-        OutputDebugStringA(("End dragging at (" + 
-                           std::to_string(draggedComponent_->relativeX) + "," + 
-                           std::to_string(draggedComponent_->relativeY) + ")\n").c_str());
+      bool isRightButton = (msg.message == WM_RBUTTONUP);
+      
+      // 處理拖放結束
+      if (!isRightButton && draggedComponent_ && isDragging_) {
+        bool accepted = false;
+        
+        // 根據拖曳模式處理
+        switch (draggedComponent_->dragMode) {
+          case DragMode::Move:
+            // 可移動位置模式 - 停留在新位置
+            draggedComponent_->OnDragEnd(false);
+            break;
+            
+          case DragMode::MoveRevert:
+            // 移動但回復模式 - 返回原始位置
+            draggedComponent_->relativeX = draggedComponent_->originalX;
+            draggedComponent_->relativeY = draggedComponent_->originalY;
+            draggedComponent_->OnDragEnd(false);
+            break;
+            
+          case DragMode::DragDrop:
+            // 拖放模式 - 檢查是否有有效目標
+            if (isInDragDropMode_ && dropTarget_ && dropTarget_->CanReceiveDrop()) {
+              // 嘗試放置
+              accepted = dropTarget_->OnDrop(draggedComponent_);
+            }
+            
+            if (accepted) {
+              // 接受拖放 - 刪除拖曳的組件
+              draggedComponent_->OnDragEnd(true);
+              
+              // 清除所有對即將刪除組件的引用
+              if (hoveredComponent_ == draggedComponent_) {
+                hoveredComponent_ = nullptr;
+              }
+              if (focusedComponent_ == draggedComponent_) {
+                focusedComponent_ = nullptr;
+              }
+              if (pressedComponent_ == draggedComponent_) {
+                pressedComponent_ = nullptr;
+              }
+              
+              // 從父容器中移除
+              if (draggedComponent_->parent) {
+                auto& siblings = draggedComponent_->parent->children;
+                siblings.erase(
+                  std::remove_if(siblings.begin(), siblings.end(),
+                    [this](const std::unique_ptr<UIComponentNew>& child) {
+                      return child.get() == draggedComponent_;
+                    }),
+                  siblings.end()
+                );
+              } else {
+                // 從根組件中移除
+                rootComponents_.erase(
+                  std::remove_if(rootComponents_.begin(), rootComponents_.end(),
+                    [this](const std::unique_ptr<UIComponentNew>& child) {
+                      return child.get() == draggedComponent_;
+                    }),
+                  rootComponents_.end()
+                );
+              }
+            } else {
+              // 拒絕拖放 - 返回原始位置
+              draggedComponent_->relativeX = draggedComponent_->originalX;
+              draggedComponent_->relativeY = draggedComponent_->originalY;
+              draggedComponent_->OnDragEnd(false);
+            }
+            break;
+            
+          default:
+            // 不應該到這裡
+            break;
+        }
+        
+        // 清理拖放狀態
+        if (dropTarget_) {
+          dropTarget_->OnDragLeave(draggedComponent_);
+          dropTarget_ = nullptr;
+        }
+        
         draggedComponent_ = nullptr;
-        // 確保釋放滑鼠捕獲，防止相機繼續響應
+        dragOffset_ = {0, 0};
+        isDragging_ = false;
+        isInDragDropMode_ = false;
         ReleaseCapture();
-        return true; // 完全攔截事件，不讓相機處理
+        
+        // 重要：清除按下的組件，防止後續事件誤判
+        pressedComponent_ = nullptr;
+        
+        return true;
       }
       
       UIComponentNew* component = GetComponentAt(mouseX, mouseY);
-      if (component) {
-        bool isRightButton = (msg.message == WM_RBUTTONUP);
-        bool handled = component->OnMouseUp(mouseX, mouseY, isRightButton);
+      
+      if (!isRightButton && pressedComponent_) {
+        // 處理左鍵釋放
+        if (component == pressedComponent_) {
+          // 在同一個組件上釋放，觸發點擊
+          component->OnMouseUp(mouseX, mouseY, false);
+        } else {
+          // 不在同一個組件上釋放，只重置狀態
+          if (auto* btn = dynamic_cast<UIButtonNew*>(pressedComponent_)) {
+            btn->state = UIButtonNew::State::Normal;
+          }
+        }
+        pressedComponent_ = nullptr;
+        ReleaseCapture();
+        return true;
+      } else if (isRightButton && component) {
+        // 右鍵釋放
+        bool handled = component->OnMouseUp(mouseX, mouseY, true);
         if (handled) {
-          ReleaseCapture(); // 確保釋放滑鼠捕獲
+          ReleaseCapture();
         }
         return handled;
       }
-      break;
+      
+      // 沒有任何特殊處理，返回 false
+      return false;
     }
     
     case WM_KEYDOWN: {
@@ -260,10 +455,11 @@ bool UIManager::HandleMessage(const MSG& msg) {
   return false; // 未處理，交給下層或 DefWindowProc
 }
 
-int UIManager::CreateLayer(const std::wstring& name, float alpha) {
-  UILayer layer;
+int UIManager::CreateLayer(const std::wstring& name, float priority, float alpha) {
+  UILayerLegacy layer;
   layer.name = name;
   layer.alpha = alpha;
+  layer.priority = priority;
   layer.zOrder = static_cast<int>(layers_.size());
   layers_.push_back(layer);
   return static_cast<int>(layers_.size() - 1);
@@ -281,15 +477,27 @@ void UIManager::SetLayerAlpha(int layerId, float alpha) {
   }
 }
 
-void UIManager::AddText(const std::wstring& text, int x, int y, int width, int height, 
+int UIManager::AddText(const std::wstring& text, int x, int y, int width, int height, 
                        unsigned long color, int layer) {
+  static int nextTextId = 1;
   UITextElement element;
+  element.id = nextTextId++;
   element.text = text;
   element.rect = {x, y, x + width, y + height};
   element.color = color;
   element.format = DT_LEFT | DT_TOP;
   element.layer = layer;
   textElements_.push_back(element);
+  return element.id;
+}
+
+void UIManager::UpdateText(int textId, const std::wstring& newText) {
+  auto it = std::find_if(textElements_.begin(), textElements_.end(),
+    [textId](const UITextElement& elem) { return elem.id == textId; });
+  
+  if (it != textElements_.end()) {
+    it->text = newText;
+  }
 }
 
 int UIManager::AddImage(const std::wstring& imagePath, int x, int y, int width, int height,
@@ -302,7 +510,7 @@ int UIManager::AddImage(const std::wstring& imagePath, int x, int y, int width, 
   element.layer = layer;
   element.id = nextId_++;
   element.visible = true;
-  element.draggable = draggable;
+  // draggable parameter is ignored for now - UIImageElement no longer has this property
   imageElements_.push_back(element);
   return element.id;
 }
@@ -378,7 +586,7 @@ void UIManager::SetImageVisible(int imageId, bool visible) {
   }
 }
 
-// 透明區域檢測 - 實際讀取像素數據檢查綠色透明
+// 透明區域檢測 - 使用快取的 alpha 遮罩
 bool UIManager::IsPointInTransparentArea(int x, int y, const std::wstring& imagePath, const RECT& rect) {
   if (!textureManager_) return false;
   
@@ -387,66 +595,33 @@ bool UIManager::IsPointInTransparentArea(int x, int y, const std::wstring& image
     return true; // 在矩形外視為透明
   }
   
-  try {
-    auto texture = textureManager_->Load(imagePath);
-    if (!texture) return false;
-    
-    IDirect3DTexture9* tex = static_cast<IDirect3DTexture9*>(texture.get());
-    D3DSURFACE_DESC desc;
-    if (FAILED(tex->GetLevelDesc(0, &desc))) return false;
-    
-    // 計算紋理座標
-    float u = float(x - rect.left) / float(rect.right - rect.left);
-    float v = float(y - rect.top) / float(rect.bottom - rect.top);
-    
-    int texX = int(u * desc.Width);
-    int texY = int(v * desc.Height);
-    
-    if (texX < 0 || texX >= (int)desc.Width || texY < 0 || texY >= (int)desc.Height) {
-      return true;
+  // 檢查是否有快取的 alpha 遮罩
+  auto it = alphaMaskCache_.find(imagePath);
+  if (it == alphaMaskCache_.end()) {
+    // 建立 alpha 遮罩
+    BuildAlphaMask(imagePath);
+    it = alphaMaskCache_.find(imagePath);
+    if (it == alphaMaskCache_.end()) {
+      return false; // 無法建立遮罩，視為不透明
     }
-    
-    // 實際讀取像素數據來檢查透明度 (只對bg.bmp進行精確檢測)
-    if (imagePath == L"bg.bmp") {
-      // 獲取surface以讀取像素數據
-      ComPtr<IDirect3DSurface9> surface;
-      if (SUCCEEDED(tex->GetSurfaceLevel(0, &surface))) {
-        D3DLOCKED_RECT lockedRect;
-        RECT sourceRect = {texX, texY, texX + 1, texY + 1};
-        
-        if (SUCCEEDED(surface->LockRect(&lockedRect, &sourceRect, D3DLOCK_READONLY))) {
-          // 根據格式讀取像素
-          DWORD* pixels = (DWORD*)lockedRect.pBits;
-          DWORD pixel = pixels[0];
-          
-          surface->UnlockRect();
-          
-          // 檢查是否為綠色 (color key) - 允許一些容差
-          BYTE r = (pixel >> 16) & 0xFF;
-          BYTE g = (pixel >> 8) & 0xFF;
-          BYTE b = pixel & 0xFF;
-          
-          // 綠色色鍵檢測：綠色較高，紅藍較低
-          if (g > 200 && r < 100 && b < 100) {
-            return true; // 綠色透明區域
-          }
-        }
-      }
-      return false; // 非透明區域
-    } 
-    else if (imagePath == L"bt.bmp") {
-      // bt.bmp使用簡化檢測：邊緣5像素視為透明
-      int margin = 5;
-      if (x <= rect.left + margin || x >= rect.right - margin ||
-          y <= rect.top + margin || y >= rect.bottom - margin) {
-        return true;
-      }
-    }
-    
-    return false; // 其他區域或文件視為非透明
-  } catch (...) {
-    return false;
   }
+  
+  const AlphaMask& mask = it->second;
+  
+  // 計算紋理座標
+  float u = float(x - rect.left) / float(rect.right - rect.left);
+  float v = float(y - rect.top) / float(rect.bottom - rect.top);
+  
+  int texX = int(u * mask.width);
+  int texY = int(v * mask.height);
+  
+  if (texX < 0 || texX >= mask.width || texY < 0 || texY >= mask.height) {
+    return true;
+  }
+  
+  // 查詢遮罩
+  int index = texY * mask.width + texX;
+  return !mask.mask[index]; // false = 透明, true = 不透明
 }
 
 int UIManager::GetTopMostElementAt(int x, int y) {
@@ -570,18 +745,28 @@ void UIManager::RenderButtons(IDirect3DDevice9* dev) {
 }
 
 void UIManager::SortElementsByLayer() {
+  // Sort by layer priority instead of layer ID
   std::sort(textElements_.begin(), textElements_.end(),
-    [](const UITextElement& a, const UITextElement& b) {
+    [this](const UITextElement& a, const UITextElement& b) {
+      if (a.layer < layers_.size() && b.layer < layers_.size()) {
+        return layers_[a.layer].priority < layers_[b.layer].priority;
+      }
       return a.layer < b.layer;
     });
     
   std::sort(imageElements_.begin(), imageElements_.end(),
-    [](const UIImageElement& a, const UIImageElement& b) {
+    [this](const UIImageElement& a, const UIImageElement& b) {
+      if (a.layer < layers_.size() && b.layer < layers_.size()) {
+        return layers_[a.layer].priority < layers_[b.layer].priority;
+      }
       return a.layer < b.layer;
     });
     
   std::sort(buttons_.begin(), buttons_.end(),
-    [](const UIButton& a, const UIButton& b) {
+    [this](const UIButton& a, const UIButton& b) {
+      if (a.layer < layers_.size() && b.layer < layers_.size()) {
+        return layers_[a.layer].priority < layers_[b.layer].priority;
+      }
       return a.layer < b.layer;
     });
 }
@@ -591,50 +776,113 @@ void UIManager::SortElementsByLayer() {
 // =============================================================================
 
 // UIImageNew 實現
-void UIImageNew::Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureManager* texMgr) {
+void UIImageNew::Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureManager* texMgr, ID3DXFont* font) {
   if (!visible || !texMgr) return;
   
   auto texture = texMgr->Load(imagePath);
   if (!texture) return;
   
   RECT absRect = GetAbsoluteRect();
-  D3DXVECTOR3 pos(float(absRect.left), float(absRect.top), 0.0f);
   
-  // 計算縮放
-  D3DSURFACE_DESC desc;
-  if (SUCCEEDED(static_cast<IDirect3DTexture9*>(texture.get())->GetLevelDesc(0, &desc))) {
-    float scaleX = float(width) / float(desc.Width);
-    float scaleY = float(height) / float(desc.Height);
-    
-    D3DXMATRIX scale;
-    D3DXMatrixScaling(&scale, scaleX, scaleY, 1.0f);
-    sprite->SetTransform(&scale);
+  // 調試輸出 - 關閉過於頻繁的渲染調試
+  // if (imagePath == L"bg.png") {
+  //   static int frameCount = 0;
+  //   if (frameCount++ % 600 == 0) { // 每10秒一次
+  //     std::wstring debugMsg = L"Render bg.png: relative=(" + std::to_wstring(relativeX) + L"," + std::to_wstring(relativeY) + 
+  //                            L"), absolute=(" + std::to_wstring(absRect.left) + L"," + std::to_wstring(absRect.top) + 
+  //                            L"), size=(" + std::to_wstring(width) + L"x" + std::to_wstring(height) + L")\n";
+  //     OutputDebugStringW(debugMsg.c_str());
+  //   }
+  // }
+  
+  // 計算座標位置 - 檢查是否需要偏移調整
+  float renderX = float(absRect.left);
+  float renderY = float(absRect.top);
+  
+  // 診斷輸出座標轉換和實際紋理大小 - 已關閉
+  // if (imagePath == L"bg.png") {
+  //   static int diagCount = 0;
+  //   if (diagCount++ < 5) { // 只輸出前5次
+  //     char debugMsg[512];
+  //     sprintf_s(debugMsg, "UIImageNew::Render bg.png: relativeXY=(%d,%d), absRect=(%d,%d,%d,%d), renderPos=(%.1f,%.1f)\n",
+  //               relativeX, relativeY,
+  //               absRect.left, absRect.top, absRect.right, absRect.bottom,
+  //               renderX, renderY);
+  //     OutputDebugStringA(debugMsg);
+  //     
+  //     // 也輸出父元素資訊
+  //     if (parent) {
+  //       RECT parentRect = parent->GetAbsoluteRect();
+  //       sprintf_s(debugMsg, "  Parent: absRect=(%d,%d,%d,%d)\n",
+  //                 parentRect.left, parentRect.top, parentRect.right, parentRect.bottom);
+  //       OutputDebugStringA(debugMsg);
+  //     } else {
+  //       OutputDebugStringA("  Parent: None (root element)\n");
+  //     }
+  //   }
+  // }
+  
+  D3DXVECTOR3 pos(renderX, renderY, 0.0f);
+  
+  // 檢查實際紋理大小
+  if (imagePath == L"bg.png") {
+    IDirect3DTexture9* tex = static_cast<IDirect3DTexture9*>(texture.get());
+    D3DSURFACE_DESC desc;
+    if (SUCCEEDED(tex->GetLevelDesc(0, &desc))) {
+      // 紋理大小調試輸出 - 已移除
+    }
   }
   
-  sprite->Draw(static_cast<IDirect3DTexture9*>(texture.get()), 
-               nullptr, nullptr, &pos, color);
+  // 如果正在接收拖放，顯示高亮效果
+  D3DCOLOR finalColor = color;
+  if (manager && static_cast<UIManager*>(manager)->GetDropTarget() == this) {
+    // 添加高亮效果
+    finalColor = D3DCOLOR_ARGB(255, 255, 255, 128); // 黃色高亮
+  }
   
-  // 重設變換
-  D3DXMATRIX identity;
-  D3DXMatrixIdentity(&identity);
-  sprite->SetTransform(&identity);
+  // 直接以原始大小繪製，不進行縮放
+  sprite->Draw(static_cast<IDirect3DTexture9*>(texture.get()), 
+               nullptr, nullptr, &pos, finalColor);
 }
 
 bool UIImageNew::OnMouseDown(int x, int y, bool isRightButton) {
   if (!enabled || !visible) return false;
   
-  if (isRightButton && draggable) {
+  if (isRightButton && dragMode != DragMode::None) {
     // 開始拖曳
     return true;
   }
   return false;
 }
 
+void UIImageNew::OnDragEnter(UIComponentNew* dragged) {
+  // 可以在這裡添加視覺反饋
+}
+
+void UIImageNew::OnDragLeave(UIComponentNew* dragged) {
+  // 清除視覺反饋
+}
+
+bool UIImageNew::OnDrop(UIComponentNew* dragged) {
+  if (!canReceiveDrop) return false;
+  
+  // 接受拖放
+  return true;
+}
+
 // UIButtonNew 實現  
-void UIButtonNew::Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureManager* texMgr) {
+void UIButtonNew::Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureManager* texMgr, ID3DXFont* font) {
   if (!visible) return;
   
   RECT absRect = GetAbsoluteRect();
+  
+  // 調試：第一次渲染時輸出按鈕信息
+  static std::set<UIButtonNew*> renderedButtons;
+  if (renderedButtons.find(this) == renderedButtons.end()) {
+    std::wcout << L"Rendering button \"" << text << L"\" at (" << absRect.left << ", " << absRect.top 
+               << ") size: " << (absRect.right - absRect.left) << "x" << (absRect.bottom - absRect.top) << std::endl;
+    renderedButtons.insert(this);
+  }
   
   // 根據狀態選擇圖片
   std::wstring currentImage;
@@ -651,16 +899,7 @@ void UIButtonNew::Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureMan
     if (texture) {
       D3DXVECTOR3 pos(float(absRect.left), float(absRect.top), 0.0f);
       
-      // 計算縮放
-      D3DSURFACE_DESC desc;
-      if (SUCCEEDED(static_cast<IDirect3DTexture9*>(texture.get())->GetLevelDesc(0, &desc))) {
-        float scaleX = float(width) / float(desc.Width);
-        float scaleY = float(height) / float(desc.Height);
-        
-        D3DXMATRIX scale;
-        D3DXMatrixScaling(&scale, scaleX, scaleY, 1.0f);
-        sprite->SetTransform(&scale);
-      }
+      // 暫時不使用縮放 - 先確認座標正確
       
       D3DCOLOR btnColor = backgroundColor;
       if (state == State::Pressed) {
@@ -672,14 +911,74 @@ void UIButtonNew::Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureMan
       sprite->Draw(static_cast<IDirect3DTexture9*>(texture.get()), 
                    nullptr, nullptr, &pos, btnColor);
       
-      // 重設變換
-      D3DXMATRIX identity;
-      D3DXMatrixIdentity(&identity);
-      sprite->SetTransform(&identity);
+      // 不需要重設變換
     }
   } else {
-    // 渲染純色背景
-    if (dev) {
+    // 渲染純色背景 - 使用虛擬的 1x1 紋理
+    if (sprite && dev) {
+      // 調試輸出
+      static std::set<UIButtonNew*> debuggedButtons;
+      if (debuggedButtons.find(this) == debuggedButtons.end()) {
+        std::wcout << L"Button \"" << text << L"\" rendering solid background" << std::endl;
+        debuggedButtons.insert(this);
+      }
+      
+      // 創建或使用緩存的 1x1 白色紋理
+      static ComPtr<IDirect3DTexture9> s_whiteTexture;
+      if (!s_whiteTexture) {
+        if (SUCCEEDED(dev->CreateTexture(1, 1, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &s_whiteTexture, nullptr))) {
+          D3DLOCKED_RECT lockedRect;
+          if (SUCCEEDED(s_whiteTexture->LockRect(0, &lockedRect, nullptr, 0))) {
+            *(DWORD*)lockedRect.pBits = 0xFFFFFFFF; // 純白色
+            s_whiteTexture->UnlockRect(0);
+          }
+        }
+      }
+      
+      if (s_whiteTexture) {
+        // 使用 sprite 渲染純色矩形
+        RECT srcRect = {0, 0, 1, 1};
+        D3DXVECTOR3 pos(float(absRect.left), float(absRect.top), 0.0f);
+        D3DXVECTOR3 scale(float(absRect.right - absRect.left), float(absRect.bottom - absRect.top), 1.0f);
+        
+        // 根據狀態調整顏色
+        D3DCOLOR btnColor = backgroundColor;
+        if (state == State::Pressed) {
+          // 按下時變暗
+          BYTE r = (backgroundColor >> 16) & 0xFF;
+          BYTE g = (backgroundColor >> 8) & 0xFF;
+          BYTE b = backgroundColor & 0xFF;
+          r = r * 128 / 255;
+          g = g * 128 / 255;
+          b = b * 128 / 255;
+          btnColor = D3DCOLOR_ARGB(255, r, g, b);
+        } else if (state == State::Hover) {
+          // 懸停時變亮
+          BYTE r = (backgroundColor >> 16) & 0xFF;
+          BYTE g = (backgroundColor >> 8) & 0xFF;
+          BYTE b = backgroundColor & 0xFF;
+          r = min(255, r * 220 / 192);
+          g = min(255, g * 220 / 192);
+          b = min(255, b * 220 / 192);
+          btnColor = D3DCOLOR_ARGB(255, r, g, b);
+        }
+        
+        // 設置變換矩陣來縮放 1x1 紋理到按鈕大小
+        D3DXMATRIX matScale, matTrans, matWorld;
+        D3DXMatrixScaling(&matScale, scale.x, scale.y, 1.0f);
+        D3DXMatrixTranslation(&matTrans, pos.x, pos.y, 0.0f);
+        matWorld = matScale * matTrans;
+        sprite->SetTransform(&matWorld);
+        
+        sprite->Draw(s_whiteTexture.Get(), &srcRect, nullptr, nullptr, btnColor);
+        
+        // 重置變換
+        D3DXMatrixIdentity(&matWorld);
+        sprite->SetTransform(&matWorld);
+      } else {
+        // 備用方案：使用 DrawPrimitiveUP
+        sprite->End();
+      
       struct CUSTOMVERTEX {
         float x, y, z, rhw;
         D3DCOLOR color;
@@ -699,23 +998,49 @@ void UIButtonNew::Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureMan
         {float(absRect.left),  float(absRect.bottom), 0.0f, 1.0f, btnColor}
       };
       
+      // 保存當前狀態
       DWORD oldFVF;
       dev->GetFVF(&oldFVF);
+      DWORD oldAlphaBlend;
+      dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &oldAlphaBlend);
+      
+      // 設置渲染狀態
+      dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
       dev->SetFVF(D3DFVF_XYZRHW | D3DFVF_DIFFUSE);
       dev->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2, vertices, sizeof(CUSTOMVERTEX));
+      
+      // 恢復狀態
       dev->SetFVF(oldFVF);
+      dev->SetRenderState(D3DRS_ALPHABLENDENABLE, oldAlphaBlend);
+      
+      // 重新開始 sprite
+      sprite->Begin(D3DXSPRITE_ALPHABLEND | D3DXSPRITE_DONOTSAVESTATE);
+      }
     }
   }
   
-  // 渲染文字 - 需要從UIManager中獲取font
-  // 暫時跳過，因為需要重構以傳遞font參數
-  // TODO: 重構以支援文字渲染
+  // 渲染文字
+  if (font && !text.empty()) {
+    RECT textRect = absRect;
+    
+    // 根據狀態調整文字顏色
+    D3DCOLOR finalTextColor = textColor;
+    if (state == State::Disabled) {
+      finalTextColor = D3DCOLOR_ARGB(255, 128, 128, 128); // 灰色
+    }
+    
+    font->DrawText(sprite, text.c_str(), -1, &textRect, 
+                   DT_CENTER | DT_VCENTER | DT_SINGLELINE, finalTextColor);
+  }
 }
 
 bool UIButtonNew::OnMouseMove(int x, int y) {
   if (!enabled || !visible) return false;
   
-  state = State::Hover;
+  // Don't change state to hover if we're currently pressed
+  if (state != State::Pressed) {
+    state = State::Hover;
+  }
   return true;
 }
 
@@ -733,7 +1058,7 @@ bool UIButtonNew::OnMouseUp(int x, int y, bool isRightButton) {
   if (!enabled || !visible) return false;
   
   if (!isRightButton && state == State::Pressed) {
-    state = State::Normal;
+    state = State::Hover;  // Stay in hover state since mouse is still over button
     if (onClick) {
       onClick();
     }
@@ -743,7 +1068,7 @@ bool UIButtonNew::OnMouseUp(int x, int y, bool isRightButton) {
 }
 
 // UIEditNew 實現
-void UIEditNew::Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureManager* texMgr) {
+void UIEditNew::Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureManager* texMgr, ID3DXFont* font) {
   if (!visible) return;
   
   RECT absRect = GetAbsoluteRect();
@@ -878,17 +1203,56 @@ bool UIEditNew::OnChar(WPARAM ch) {
 // UIManager 新組件系統方法實現
 // =============================================================================
 
+// 輔助函數 - 獲取圖片尺寸
+bool UIManager::GetImageSize(const std::wstring& imagePath, int& width, int& height) const {
+  if (!textureManager_) return false;
+  
+  auto texture = textureManager_->Load(imagePath);
+  if (!texture) return false;
+  
+  IDirect3DTexture9* tex = static_cast<IDirect3DTexture9*>(texture.get());
+  D3DSURFACE_DESC desc;
+  if (FAILED(tex->GetLevelDesc(0, &desc))) return false;
+  
+  width = desc.Width;
+  height = desc.Height;
+  return true;
+}
+
 UIComponentNew* UIManager::CreateImage(const std::wstring& imagePath, int x, int y, int width, int height, 
-                                       bool draggable, UIComponentNew* parent) {
+                                       DragMode dragMode, UIComponentNew* parent, bool allowDragFromTransparent) {
   auto image = std::make_unique<UIImageNew>();
   image->id = nextId_++;
   image->imagePath = imagePath;
+  
+  // 從圖片路徑提取檔案名稱作為組件名稱
+  size_t lastSlash = imagePath.find_last_of(L"/\\");
+  if (lastSlash != std::wstring::npos) {
+    image->name = imagePath.substr(lastSlash + 1);
+  } else {
+    image->name = imagePath;
+  }
+  
   image->relativeX = x;
   image->relativeY = y;
   image->width = width;
   image->height = height;
-  image->draggable = draggable;
+  image->dragMode = dragMode;  // 設置拖曳模式
   image->parent = parent;
+  image->allowDragFromTransparent = allowDragFromTransparent;
+  image->manager = this;  // 設置管理器指針
+  
+  // 調試輸出
+  char debugMsg[256];
+  sprintf_s(debugMsg, "CreateImage: %ls, dragMode=%d, allowDragFromTransparent=%d\n", 
+           image->name.c_str(), static_cast<int>(dragMode), allowDragFromTransparent);
+  OutputDebugStringA(debugMsg);
+  
+  // 對於圖片組件，默認啟用透明度檢測
+  // 但拖曳操作會根據 allowDragFromTransparent 參數決定是否允許在透明區域拖曳
+  image->useTransparency = true;
+  
+  // 創建圖片調試輸出 - 已移除
   
   UIComponentNew* result = image.get();
   
@@ -907,9 +1271,12 @@ UIComponentNew* UIManager::CreateButton(const std::wstring& text, int x, int y, 
                                     const std::wstring& hoverImage, 
                                     const std::wstring& pressedImage, 
                                     const std::wstring& disabledImage) {
+  // 按鈕創建調試輸出 - 已移除
+  
   auto button = std::make_unique<UIButtonNew>();
   button->id = nextId_++;
   button->text = text;
+  button->name = L"Button_" + text;  // 使用按鈕文字作為名稱
   button->relativeX = x;
   button->relativeY = y;
   button->width = width;
@@ -920,13 +1287,28 @@ UIComponentNew* UIManager::CreateButton(const std::wstring& text, int x, int y, 
   button->hoverImage = hoverImage;
   button->pressedImage = pressedImage;
   button->disabledImage = disabledImage;
+  button->manager = this;  // 設置管理器指針
+  
+  // 包裝原始的onClick，加入事件通知
+  auto originalOnClick = onClick;
+  auto* manager = this;
+  auto* btnPtr = button.get();
+  button->onClick = [originalOnClick, manager, btnPtr]() {
+    if (originalOnClick) {
+      originalOnClick();
+    }
+    // 通知監聽器
+    manager->NotifyButtonClicked(btnPtr);
+  };
   
   UIComponentNew* result = button.get();
   
   if (parent) {
     parent->children.push_back(std::move(button));
+    std::wcout << L"Added button \"" << text << L"\" as child of parent" << std::endl;
   } else {
     rootComponents_.push_back(std::move(button));
+    std::wcout << L"Added button \"" << text << L"\" to root components. Total root components: " << rootComponents_.size() << std::endl;
   }
   
   return result;
@@ -936,12 +1318,14 @@ UIComponentNew* UIManager::CreateEdit(int x, int y, int width, int height, UICom
                                   const std::wstring& backgroundImage) {
   auto edit = std::make_unique<UIEditNew>();
   edit->id = nextId_++;
+  edit->name = L"Edit_" + std::to_wstring(nextId_ - 1);  // 使用ID作為名稱的一部分
   edit->relativeX = x;
   edit->relativeY = y;
   edit->width = width;
   edit->height = height;
   edit->parent = parent;
   edit->backgroundImage = backgroundImage;
+  edit->manager = this;  // 設置管理器指針
   
   UIComponentNew* result = edit.get();
   
@@ -956,6 +1340,7 @@ UIComponentNew* UIManager::CreateEdit(int x, int y, int width, int height, UICom
 
 // 智能事件委派 - 遞歸查找滑鼠下的組件，考慮透明度
 UIComponentNew* UIManager::GetComponentAt(int x, int y) {
+  
   std::function<UIComponentNew*(const std::vector<std::unique_ptr<UIComponentNew>>&)> findComponent;
   
   findComponent = [&](const std::vector<std::unique_ptr<UIComponentNew>>& components) -> UIComponentNew* {
@@ -965,6 +1350,9 @@ UIComponentNew* UIManager::GetComponentAt(int x, int y) {
       if (!comp->visible) continue;
       
       RECT rect = comp->GetAbsoluteRect();
+      
+      // 對 bg.png 的特殊調試 - 已移除
+      
       if (x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom) {
         // 先檢查子組件
         UIComponentNew* child = findComponent(comp->children);
@@ -973,12 +1361,58 @@ UIComponentNew* UIManager::GetComponentAt(int x, int y) {
         // 檢查當前組件是否在透明區域 (只對圖片組件檢查)
         if (auto* img = dynamic_cast<UIImageNew*>(comp.get())) {
           if (img->useTransparency && IsPointInTransparentArea(x, y, img->imagePath, rect)) {
+            // b-kuang.png 透明區域調試 - 已移除
             continue; // 在透明區域，跳過此組件
           }
+          // b-kuang.png 非透明區域調試 - 已移除
         }
         
         // 沒有子組件被點擊且不在透明區域，返回此組件
         return comp.get();
+      }
+    }
+    return nullptr;
+  };
+  
+  return findComponent(rootComponents_);
+}
+
+UIComponentNew* UIManager::GetDraggableComponentAt(int x, int y) {
+  std::function<UIComponentNew*(const std::vector<std::unique_ptr<UIComponentNew>>&)> findComponent;
+  
+  findComponent = [&](const std::vector<std::unique_ptr<UIComponentNew>>& components) -> UIComponentNew* {
+    // 反向遍歷，因為後添加的在上層
+    for (auto it = components.rbegin(); it != components.rend(); ++it) {
+      auto& comp = *it;
+      if (!comp->visible) continue;
+      
+      RECT rect = comp->GetAbsoluteRect();
+      
+      if (x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom) {
+        
+        // 先檢查子組件是否有可拖曳的
+        UIComponentNew* draggableChild = findComponent(comp->children);
+        if (draggableChild) {
+          return draggableChild;
+        }
+        
+        // 如果沒有可拖曳的子組件，檢查當前組件是否可拖曳
+        if (comp->IsDraggable()) {
+          if (auto* img = dynamic_cast<UIImageNew*>(comp.get())) {
+            // 如果不允許從透明區域拖曳，則需要檢查透明度
+            if (!img->allowDragFromTransparent && img->useTransparency && 
+                IsPointInTransparentArea(x, y, img->imagePath, rect)) {
+              // 在透明區域且不允許從透明區域拖曳
+              // 不返回這個組件，繼續檢查其他組件
+            } else {
+              // 找到可拖曳組件
+              return comp.get();
+            }
+          } else {
+            // 不是圖片組件，直接返回
+            return comp.get();
+          }
+        }
       }
     }
     return nullptr;
@@ -1006,12 +1440,176 @@ void UIManager::SetFocusedComponent(UIComponentNew* component) {
 }
 
 void UIManager::RenderComponents(IDirect3DDevice9* dev, const std::vector<std::unique_ptr<UIComponentNew>>& components) {
+  static bool firstRender = true;
+  if (firstRender && &components == &rootComponents_) {
+    std::cout << "UIManager: Rendering " << components.size() << " root components" << std::endl;
+    firstRender = false;
+  }
+  
   for (const auto& comp : components) {
     if (comp->visible) {
-      comp->Render(dev, sprite_.Get(), textureManager_);
+      comp->Render(dev, sprite_.Get(), textureManager_, font_.Get());
       
       // 遞歸渲染子組件
       RenderComponents(dev, comp->children);
     }
+  }
+}
+
+// 建立 Alpha 遮罩
+void UIManager::BuildAlphaMask(const std::wstring& imagePath) const {
+  if (!textureManager_) return;
+  
+  try {
+    auto texture = textureManager_->Load(imagePath);
+    if (!texture) return;
+    
+    IDirect3DTexture9* tex = static_cast<IDirect3DTexture9*>(texture.get());
+    D3DSURFACE_DESC desc;
+    if (FAILED(tex->GetLevelDesc(0, &desc))) return;
+    
+    AlphaMask mask;
+    mask.width = desc.Width;
+    mask.height = desc.Height;
+    mask.mask.resize(desc.Width * desc.Height, true); // 預設為不透明
+    
+    // 獲取surface以讀取像素數據
+    ComPtr<IDirect3DSurface9> surface;
+    if (SUCCEEDED(tex->GetSurfaceLevel(0, &surface))) {
+      D3DLOCKED_RECT lockedRect;
+      
+      if (SUCCEEDED(surface->LockRect(&lockedRect, nullptr, D3DLOCK_READONLY))) {
+        // 判斷是 BMP 還是 PNG
+        bool isBMP = imagePath.find(L".bmp") != std::wstring::npos;
+        bool isPNG = imagePath.find(L".png") != std::wstring::npos;
+        
+        // 根據格式讀取像素
+        for (UINT y = 0; y < desc.Height; y++) {
+          DWORD* row = (DWORD*)((BYTE*)lockedRect.pBits + y * lockedRect.Pitch);
+          
+          for (UINT x = 0; x < desc.Width; x++) {
+            DWORD pixel = row[x];
+            
+            bool isTransparent = false;
+            
+            if (isBMP) {
+              // BMP: 檢查綠色色鍵
+              BYTE r = (pixel >> 16) & 0xFF;
+              BYTE g = (pixel >> 8) & 0xFF;
+              BYTE b = pixel & 0xFF;
+              
+              // 綠色色鍵檢測：綠色較高，紅藍較低
+              if (g > 200 && r < 100 && b < 100) {
+                isTransparent = true;
+              }
+            } else if (isPNG) {
+              // PNG: 檢查 alpha 通道
+              BYTE alpha = (pixel >> 24) & 0xFF;
+              if (alpha < 32) { // 只有幾乎完全透明的像素才視為透明（alpha < 12.5%）
+                isTransparent = true;
+              }
+            }
+            
+            int index = y * desc.Width + x;
+            mask.mask[index] = !isTransparent;
+          }
+        }
+        
+        surface->UnlockRect();
+      }
+    }
+    
+    // 計算透明像素的百分比
+    int transparentCount = 0;
+    for (bool opaque : mask.mask) {
+      if (!opaque) transparentCount++;
+    }
+    float transparentPercent = (float)transparentCount / (mask.width * mask.height) * 100.0f;
+    
+    // 存入快取
+    alphaMaskCache_[imagePath] = std::move(mask);
+    
+    // Alpha mask 建立成功 - 調試輸出已移除
+    
+  } catch (...) {
+    // 錯誤處理
+  }
+}
+
+// 遞歸查找組件的輔助函數
+UIComponentNew* FindComponentInTree(const std::vector<std::unique_ptr<UIComponentNew>>& components, 
+                                   std::function<bool(UIComponentNew*)> predicate) {
+  for (const auto& comp : components) {
+    if (predicate(comp.get())) {
+      return comp.get();
+    }
+    
+    // 遞歸搜索子組件
+    UIComponentNew* found = FindComponentInTree(comp->children, predicate);
+    if (found) {
+      return found;
+    }
+  }
+  return nullptr;
+}
+
+UIComponentNew* UIManager::FindComponentByName(const std::wstring& name) {
+  return FindComponentInTree(rootComponents_, [&name](UIComponentNew* comp) {
+    return comp->name == name;
+  });
+}
+
+UIComponentNew* UIManager::FindComponentById(int id) {
+  return FindComponentInTree(rootComponents_, [id](UIComponentNew* comp) {
+    return comp->id == id;
+  });
+}
+
+// UI事件監聽器管理
+void UIManager::AddUIListener(IUIListener* listener) {
+  if (listener) {
+    uiEventListeners_.push_back(listener);
+  }
+}
+
+void UIManager::RemoveUIListener(IUIListener* listener) {
+  uiEventListeners_.erase(
+    std::remove(uiEventListeners_.begin(), uiEventListeners_.end(), listener),
+    uiEventListeners_.end()
+  );
+}
+
+void UIManager::NotifyButtonClicked(UIButtonNew* button) {
+  for (auto* listener : uiEventListeners_) {
+    listener->OnButtonClicked(button);
+    listener->OnComponentClicked(button);
+  }
+}
+
+void UIManager::NotifyComponentClicked(UIComponentNew* component) {
+  for (auto* listener : uiEventListeners_) {
+    listener->OnComponentClicked(component);
+    
+    // 也通知特定類型的事件
+    if (auto* btn = dynamic_cast<UIButtonNew*>(component)) {
+      listener->OnButtonClicked(btn);
+    } else if (auto* img = dynamic_cast<UIImageNew*>(component)) {
+      listener->OnImageClicked(img);
+    }
+  }
+}
+
+void UIManager::AddComponent(std::unique_ptr<UIComponentNew> component) {
+  if (!component) return;
+  
+  // 設置管理器指針
+  component->manager = this;
+  
+  // 如果有父元件，添加到父元件的children中
+  if (component->parent) {
+    component->parent->children.push_back(std::move(component));
+  } else {
+    // 否則添加到根元件列表
+    rootComponents_.push_back(std::move(component));
   }
 }

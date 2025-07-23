@@ -53,23 +53,44 @@ std::shared_ptr<IDirect3DBaseTexture9> TextureManager::Load(
   IDirect3DBaseTexture9* rawTex = nullptr;
   D3DCOLOR colorKey = 0; // 預設無色彩鍵
   
-  // 檢查是否為bg.bmp或bt.bmp，使用綠色色彩鍵
+  // 檢查檔案類型
   std::string filename = filepath.filename().string();
-  if (filename == "bg.bmp" || filename == "bt.bmp") {
+  std::string ext = filepath.extension().string();
+  
+  // 對 BMP 檔案使用綠色色彩鍵
+  if (ext == ".bmp" || ext == ".BMP") {
     colorKey = D3DCOLOR_XRGB(0, 255, 0); // 純綠色作為透明色
   }
   
-  HRESULT hr = D3DXCreateTextureFromFileExW(
-    device_.Get(),
-    filepath.wstring().c_str(),
-    D3DX_DEFAULT, D3DX_DEFAULT,
-    D3DX_DEFAULT, 0,
-    D3DFMT_UNKNOWN,
-    D3DPOOL_MANAGED,
-    D3DX_DEFAULT, D3DX_DEFAULT,
-    colorKey, nullptr, nullptr,
-    reinterpret_cast<IDirect3DTexture9**>(&rawTex)
-  );
+  // PNG 需要特殊處理以避免黑邊
+  HRESULT hr;
+  if (ext == ".png" || ext == ".PNG") {
+    // 載入 PNG 時使用 A8R8G8B8 格式確保 alpha 通道正確
+    hr = D3DXCreateTextureFromFileExW(
+      device_.Get(),
+      filepath.wstring().c_str(),
+      D3DX_DEFAULT, D3DX_DEFAULT,
+      D3DX_DEFAULT, 0,
+      D3DFMT_A8R8G8B8,  // 強制使用含 alpha 的格式
+      D3DPOOL_MANAGED,
+      D3DX_FILTER_NONE, D3DX_FILTER_NONE,  // 避免過濾造成的邊緣問題
+      0, nullptr, nullptr,  // PNG 不使用色彩鍵
+      reinterpret_cast<IDirect3DTexture9**>(&rawTex)
+    );
+  } else {
+    // 其他格式的標準載入
+    hr = D3DXCreateTextureFromFileExW(
+      device_.Get(),
+      filepath.wstring().c_str(),
+      D3DX_DEFAULT, D3DX_DEFAULT,
+      D3DX_DEFAULT, 0,
+      D3DFMT_UNKNOWN,
+      D3DPOOL_MANAGED,
+      D3DX_DEFAULT, D3DX_DEFAULT,
+      colorKey, nullptr, nullptr,
+      reinterpret_cast<IDirect3DTexture9**>(&rawTex)
+    );
+  }
   if (FAILED(hr) || rawTex == nullptr) {
     throw std::runtime_error(std::format("TextureManager::Load: 載入貼圖失敗 {} (HRESULT=0x{:08X})", key, static_cast<UINT>(hr)));
   }

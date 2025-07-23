@@ -5,13 +5,18 @@
 #include "D3DContext.h"
 #include "ModelManager.h"
 #include "LightManager.h"
-#include "Scene3D.h"
+#include "../Scene3D.h"
 #include "UIManager.h"
 #include "InputHandler.h"
 #include "CameraController.h"
 #include "FullScreenQuad.h"
 #include "XModelLoader.h"
 #include "DirectionalLight.h"
+#include "AssetManager.h"
+#include "JsonConfigManager.h"
+#include "SceneManager.h"
+// #include "UISystem.h" // Removed - using UIManager only
+#include "EventManager.h"
 
 // Factory 函式
 std::unique_ptr<IEngineContext> CreateEngineContext() {
@@ -63,10 +68,12 @@ STDMETHODIMP EngineContext::Initialize(
   hr = d3dContext_->GetDevice(&device);
   if (FAILED(hr)) return hr;
 
-  // Step 5: 建立並檢查子系統 - 創建兩個獨立的TextureManager
+  // Step 5: 建立並檢查子系統 - 保持分離的TextureManager以優化不同用途
+  // UI紋理: 小圖、高頻存取、長生命週期
   uiTextureManager_ = CreateTextureManager(device);
   if (!uiTextureManager_) return E_FAIL;
   
+  // Model紋理: 大圖、場景生命週期、需要mipmap
   modelTextureManager_ = CreateTextureManager(device);
   if (!modelTextureManager_) return E_FAIL;
 
@@ -110,6 +117,11 @@ STDMETHODIMP EngineContext::Initialize(
   fullScreenQuad_ = CreateFullScreenQuad();
   if (!fullScreenQuad_) return E_FAIL;
 
+  // 初始化現代架構系統
+  if (!InitializeModernSystems()) {
+    return E_FAIL;
+  }
+
   return S_OK;
 }
 
@@ -133,35 +145,7 @@ STDMETHODIMP EngineContext::LoadAssets(
   );
   if (FAILED(hr)) return hr;
   
-  // 添加新UI系統測試內容
-  if (uiManager_) {
-    // 創建背景圖片 (可拖曳)
-    auto* bgImage = uiManager_->CreateImage(L"bg.bmp", 50, 50, 200, 150, true);
-    
-    // 在背景圖片上添加兩個按鈕 (相對座標，跟隨父容器移動)
-    auto* button1 = uiManager_->CreateButton(L"按鈕1", 10, 10, 80, 30, 
-      []() { 
-        OutputDebugStringA("按鈕1被點擊了!\n");
-        MessageBoxA(nullptr, "按鈕1被點擊了!", "UI測試", MB_OK);
-      }, bgImage,          // parent
-      L"bt.bmp");         // normalImage
-    
-    auto* button2 = uiManager_->CreateButton(L"按鈕2", 10, 50, 80, 30,
-      []() { 
-        OutputDebugStringA("按鈕2被點擊了!\n");
-        MessageBoxA(nullptr, "按鈕2被點擊了!", "UI測試", MB_OK);
-      }, bgImage,          // parent
-      L"bt.bmp");         // normalImage
-    
-    // 添加編輯框
-    auto* editBox = uiManager_->CreateEdit(10, 90, 100, 25, bgImage);
-    
-    // 創建文字層 (向後相容)
-    int textLayer = uiManager_->CreateLayer(L"Text", 1.0f);
-    uiManager_->AddText(L"新UI系統測試", 10, 10, 300, 30, 0xFFFFFF00, textLayer);
-    uiManager_->AddText(L"右鍵拖曳背景", 10, 45, 300, 30, 0xFF00FF00, textLayer);
-    uiManager_->AddText(L"按鈕支援四狀態", 10, 80, 300, 30, 0xFF00FFFF, textLayer);
-  }
+  // UI系統測試內容移到GameScene中
   
   return S_OK;
 }
@@ -185,7 +169,19 @@ STDMETHODIMP EngineContext::Run() {
       break;
     }
     
-    cameraController_->Update(0.016f);  // 假設60FPS
+    // 更新系統 - 優先使用新架構，如果不可用則使用舊系統
+    if (sceneManager_) {
+      // 新架構：使用 SceneManager 更新場景
+      sceneManager_->Update(0.016f);  // 假設60FPS
+      
+      // 處理事件佇列
+      if (eventManager_) {
+        eventManager_->ProcessEvents();
+      }
+    } else {
+      // 舊系統：直接更新 camera
+      cameraController_->Update(0.016f);
+    }
 
     // Step 7: 繪製
     // 清除畫面
@@ -201,13 +197,30 @@ STDMETHODIMP EngineContext::Run() {
       // 應用光照 (Effect 在 Scene3D 中處理)
       if (lightManager_) lightManager_->ApplyAll(device.Get());
       
-      // 渲染 3D 場景和 UI (Scene3D 現在負責渲染UI)
-      if (scene3D_ && cameraController_) {
-        float aspect = static_cast<float>(width_) / static_cast<float>(height_);
-        scene3D_->Render(device.Get(), 
-                        cameraController_->GetViewMatrix(),
-                        cameraController_->GetProjMatrix(aspect),
-                        uiManager_.get());
+      // 渲染 - 優先使用新架構
+      if (sceneManager_) {
+        // 新架構：使用 SceneManager 渲染場景
+        sceneManager_->Render();
+        
+        // 渲染 UI 系統
+        // 暫時停用新 UI 系統
+        // if (uiSystem_) {
+        //   uiSystem_->Render();
+        // }
+        
+        // 也渲染舊的 UIManager (向後相容)
+        if (uiManager_) {
+          uiManager_->Render(device.Get());
+        }
+      } else {
+        // 舊系統：直接渲染 Scene3D
+        if (scene3D_ && cameraController_) {
+          float aspect = static_cast<float>(width_) / static_cast<float>(height_);
+          scene3D_->Render(device.Get(), 
+                          cameraController_->GetViewMatrix(),
+                          cameraController_->GetProjMatrix(aspect),
+                          uiManager_.get());
+        }
       }
       
       // 後處理 (暫時跳過，因為需要輸入紋理)
@@ -217,10 +230,19 @@ STDMETHODIMP EngineContext::Run() {
     d3dContext_->EndScene();
     d3dContext_->Present();
   }
+  
+  // 清理場景管理器中的所有場景
+  if (sceneManager_) {
+    // 通知場景管理器程式即將退出
+    if (auto* sm = dynamic_cast<SceneManager*>(sceneManager_.get())) {
+      sm->PopAllScenes();
+    }
+  }
+  
   return S_OK;
 }
 
-// Get 方法實作
+// Get 方法實作 (舊系統)
 ITextureManager* EngineContext::GetTextureManager() { return modelTextureManager_.get(); }
 IEffectManager* EngineContext::GetEffectManager() { return effectManager_.get(); }
 ID3DContext* EngineContext::GetD3DContext() { return d3dContext_.get(); }
@@ -231,3 +253,132 @@ IUIManager* EngineContext::GetUIManager() { return uiManager_.get(); }
 IInputHandler* EngineContext::GetInputHandler() { return inputHandler_.get(); }
 ICameraController* EngineContext::GetCameraController() { return cameraController_.get(); }
 IFullScreenQuad* EngineContext::GetPostProcessor() { return fullScreenQuad_.get(); }
+
+// Get 方法實作 (新架構系統)
+ISceneManager* EngineContext::GetSceneManager() { return sceneManager_.get(); }
+IAssetManager* EngineContext::GetAssetManager() { return assetManager_.get(); }
+// IUISystem* EngineContext::GetUISystem() { return uiSystem_.get(); } // Removed
+IEventManager* EngineContext::GetEventManager() { return eventManager_.get(); }
+IConfigManager* EngineContext::GetConfigManager() { return configManager_.get(); }
+IServiceLocator* EngineContext::GetServices() { return serviceLocator_.get(); }
+
+// 現代架構系統初始化
+bool EngineContext::InitializeModernSystems() {
+    // 1. 創建事件管理器 (最先創建，其他系統可能需要它)
+    eventManager_ = CreateEventManager();
+    if (!eventManager_) {
+        std::cerr << "Failed to create EventManager" << std::endl;
+        return false;
+    }
+    
+    // 2. 創建配置管理器
+    configManager_ = CreateConfigManager();
+    if (!configManager_) {
+        std::cerr << "Failed to create ConfigManager" << std::endl;
+        return false;
+    }
+    
+    // 載入預設配置
+    if (!LoadConfiguration()) {
+        std::cerr << "Failed to load configuration" << std::endl;
+        return false;
+    }
+    
+    // 3. 創建資產管理器
+    assetManager_ = CreateAssetManager();
+    if (!assetManager_) {
+        std::cerr << "Failed to create AssetManager" << std::endl;
+        return false;
+    }
+    
+    // 初始化資產管理器
+    ComPtr<IDirect3DDevice9> device;
+    HRESULT hr = d3dContext_->GetDevice(&device);
+    if (FAILED(hr)) {
+        std::cerr << "Failed to get D3D device for AssetManager" << std::endl;
+        return false;
+    }
+    
+    if (!assetManager_->Initialize(device.Get())) {
+        std::cerr << "Failed to initialize AssetManager" << std::endl;
+        return false;
+    }
+    
+    // 設定資產路徑為當前目錄（test資料夾中的檔案直接放在根目錄）
+    assetManager_->SetAssetPath(AssetType::Model, "");    // 模型檔案直接在根目錄
+    assetManager_->SetAssetPath(AssetType::Texture, "");  // 紋理檔案直接在根目錄
+    
+    // 4. UI 系統已移除 - 使用 UIManager
+    
+    // 5. 創建服務定位器並設置所有服務
+    CreateServiceLocator();
+    
+    // 6. 創建場景管理器
+    sceneManager_ = CreateSceneManager();
+    if (!sceneManager_) {
+        std::cerr << "Failed to create SceneManager" << std::endl;
+        return false;
+    }
+    
+    if (!sceneManager_->Initialize(serviceLocator_.get())) {
+        std::cerr << "Failed to initialize SceneManager" << std::endl;
+        return false;
+    }
+    
+    // 設置 SceneManager 到 ServiceLocator
+    serviceLocator_->SetSceneManager(sceneManager_.get());
+    
+    // UISystem 已移除 - 使用 UIManager
+    
+    // 註冊 SceneManager 為輸入處理器（高優先權，在 UIManager 之後）
+    if (auto* sm = dynamic_cast<SceneManager*>(sceneManager_.get())) {
+        inputHandler_->RegisterListener(sm);
+    }
+    
+    return true;
+}
+
+void EngineContext::CreateServiceLocator() {
+    serviceLocator_ = std::make_unique<ServiceLocator>();
+    
+    // 設置現代架構服務
+    serviceLocator_->SetAssetManager(assetManager_.get());
+    serviceLocator_->SetConfigManager(configManager_.get());
+    serviceLocator_->SetEventManager(eventManager_.get());
+    serviceLocator_->SetUIManager(uiManager_.get());
+    serviceLocator_->SetCameraController(cameraController_.get());
+    
+    // 獲取 D3D 設備並設置
+    ComPtr<IDirect3DDevice9> device;
+    if (SUCCEEDED(d3dContext_->GetDevice(&device))) {
+        serviceLocator_->SetDevice(device.Get());
+    }
+    
+    // 設置舊架構服務（為了向後相容）
+    serviceLocator_->SetTextureManager(modelTextureManager_.get()); // 使用 model texture manager 作為預設
+    serviceLocator_->SetEffectManager(effectManager_.get());
+    serviceLocator_->SetD3DContext(d3dContext_.get());
+    serviceLocator_->SetModelManager(modelManager_.get());
+    serviceLocator_->SetLightManager(lightManager_.get());
+    serviceLocator_->SetScene3D(scene3D_.get());
+    serviceLocator_->SetInputHandler(inputHandler_.get());
+    serviceLocator_->SetPostProcessor(fullScreenQuad_.get());
+}
+
+bool EngineContext::LoadConfiguration() {
+    // 嘗試載入配置文件，如果不存在則使用預設值
+    bool configLoaded = configManager_->LoadConfig("config/engine.json");
+    
+    if (!configLoaded) {
+        
+        // 設置預設資產路徑
+        configManager_->SetString("assets.models.path", "models/");
+        configManager_->SetString("assets.textures.path", "textures/");
+        configManager_->SetString("assets.effects.path", "effects/");
+        configManager_->SetInt("window.width", width_);
+        configManager_->SetInt("window.height", height_);
+        configManager_->SetBool("engine.debug_mode", true);
+    }
+    
+    return true;
+}

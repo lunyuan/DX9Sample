@@ -36,6 +36,7 @@ struct VertexSimple {
 struct Material {
   D3DMATERIAL9        mat;      // 漫反射／鏡面／環境等材質參數
   IDirect3DTexture9* tex = nullptr;  // 對應的貼圖 (若有)
+  std::string        textureFileName; // 貼圖檔名（用於導出）
 };
 
 
@@ -62,4 +63,6 @@ public:
   void Draw(IDirect3DDevice9* dev);
   /// 釋放緩衝資源
   void ReleaseBuffers();
+  void DrawWithAnimation(IDirect3DDevice9* dev, ID3DXEffect* effect, const std::vector<DirectX::XMFLOAT4X4>& boneMatrices);
+  void DrawWithEffect(IDirect3DDevice9* dev, ID3DXEffect* effect);
 };

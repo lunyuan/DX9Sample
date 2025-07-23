@@ -10,6 +10,7 @@ std::unique_ptr<ISceneManager> CreateSceneManager() {
 SceneManager::SceneManager()
     : services_(nullptr)
     , initialized_(false)
+    , isShuttingDown_(false)
     , enableDebugLogging_(true)
 {
 }
@@ -32,7 +33,6 @@ bool SceneManager::Initialize(IServiceLocator* services) {
     services_ = services;
     initialized_ = true;
     
-    std::cout << "SceneManager initialized successfully" << std::endl;
     return true;
 }
 
@@ -42,6 +42,9 @@ void SceneManager::Cleanup() {
     }
     
     std::lock_guard<std::mutex> lock(sceneMutex_);
+    
+    // 設置關閉標記
+    isShuttingDown_ = true;
     
     // 清理所有場景
     PopAllScenes();
@@ -56,8 +59,8 @@ void SceneManager::Cleanup() {
     
     services_ = nullptr;
     initialized_ = false;
+    isShuttingDown_ = false;
     
-    std::cout << "SceneManager cleaned up" << std::endl;
 }
 
 void SceneManager::RegisterScene(const std::string& sceneName, SceneFactory factory) {
@@ -70,7 +73,6 @@ void SceneManager::RegisterScene(const std::string& sceneName, SceneFactory fact
     sceneFactories_[sceneName] = factory;
     
     if (enableDebugLogging_) {
-        std::cout << "Registered scene: " << sceneName << std::endl;
     }
 }
 
@@ -81,7 +83,6 @@ bool SceneManager::UnregisterScene(const std::string& sceneName) {
     if (it != sceneFactories_.end()) {
         sceneFactories_.erase(it);
         if (enableDebugLogging_) {
-            std::cout << "Unregistered scene: " << sceneName << std::endl;
         }
         return true;
     }
@@ -133,7 +134,6 @@ bool SceneManager::LoadScene(const std::string& sceneName) {
     sceneStack_.back().scene->OnEnter();
     
     if (enableDebugLogging_) {
-        std::cout << "Loaded scene: " << sceneName << std::endl;
     }
     
     return true;
@@ -171,7 +171,6 @@ bool SceneManager::SwitchToScene(const std::string& sceneName,
         sceneStack_.back().scene->OnEnter();
         
         if (enableDebugLogging_) {
-            std::cout << "Switched to scene: " << sceneName << std::endl;
         }
     } else {
         // 啟動轉換
@@ -207,7 +206,6 @@ bool SceneManager::PushScene(const std::string& sceneName,
     sceneStack_.back().scene->OnEnter();
     
     if (enableDebugLogging_) {
-        std::cout << "Pushed scene: " << sceneName << " (stack size: " << sceneStack_.size() << ")" << std::endl;
     }
     
     return true;
@@ -238,7 +236,6 @@ bool SceneManager::PopScene(const SceneTransitionParams& transition) {
     ResumeTopScene();
     
     if (enableDebugLogging_) {
-        std::cout << "Popped scene: " << sceneName << " (stack size: " << sceneStack_.size() << ")" << std::endl;
     }
     
     return true;
@@ -247,13 +244,18 @@ bool SceneManager::PopScene(const SceneTransitionParams& transition) {
 void SceneManager::PopAllScenes() {
     while (!sceneStack_.empty()) {
         auto& topItem = sceneStack_.back();
-        topItem.scene->OnExit();
+        
+        // 只在非關閉狀態下調用 OnExit
+        // 關閉時直接清理，避免訪問無效的服務
+        if (!isShuttingDown_) {
+            topItem.scene->OnExit();
+        }
+        
         CleanupScene(std::move(topItem.scene));
         sceneStack_.pop_back();
     }
     
     if (enableDebugLogging_ && !sceneStack_.empty()) {
-        std::cout << "Popped all scenes" << std::endl;
     }
 }
 
@@ -363,34 +365,15 @@ bool SceneManager::HandleInput(const MSG& msg) {
     return false;
 }
 
+bool SceneManager::HandleMessage(const MSG& msg) {
+    // IInputListener 介面實作，轉發給 HandleInput
+    return HandleInput(msg);
+}
+
 void SceneManager::PrintSceneStack() const {
     std::lock_guard<std::mutex> lock(sceneMutex_);
     
-    std::cout << "\n=== Scene Stack ===" << std::endl;
-    std::cout << "Stack Size: " << sceneStack_.size() << std::endl;
-    
-    for (size_t i = 0; i < sceneStack_.size(); ++i) {
-        const auto& item = sceneStack_[i];
-        std::cout << "  [" << i << "] " << item.scene->GetName();
-        
-        if (item.isPaused) {
-            std::cout << " (PAUSED)";
-        }
-        
-        if (item.scene->IsTransparent()) {
-            std::cout << " (TRANSPARENT)";
-        }
-        
-        std::cout << std::endl;
-    }
-    
-    if (currentTransition_.active) {
-        std::cout << "Transition: " << currentTransition_.fromScene 
-                  << " -> " << currentTransition_.toScene 
-                  << " (" << (currentTransition_.getProgress() * 100.0f) << "%)" << std::endl;
-    }
-    
-    std::cout << "==================\n" << std::endl;
+    // Scene stack debug information removed for minimal logging
 }
 
 // 私有輔助方法實作
@@ -421,7 +404,6 @@ void SceneManager::StartTransition(const std::string& fromScene, const std::stri
     currentTransition_.customCallback = params.customTransition;
     
     if (enableDebugLogging_) {
-        std::cout << "Started transition: " << fromScene << " -> " << toScene << std::endl;
     }
 }
 
@@ -437,7 +419,6 @@ void SceneManager::CompleteTransition() {
         sceneStack_.back().scene->OnEnter();
         
         if (enableDebugLogging_) {
-            std::cout << "Completed transition to: " << currentTransition_.toScene << std::endl;
         }
     }
     

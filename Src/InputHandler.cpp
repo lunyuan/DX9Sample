@@ -16,14 +16,14 @@ HRESULT InputHandler::ProcessMessages() {
   
   while (PeekMessage(&msg, hwnd_, 0, 0, PM_REMOVE)) {
     if (msg.message == WM_QUIT || msg.message == WM_CLOSE || msg.message == WM_DESTROY) {
-      OutputDebugStringA("*** Exit message received ***\n");
       return S_FALSE;
     }
     
     // Let our listeners handle the message first
     bool handled = false;
-    for (auto l : listeners_) {
-      if (l->HandleMessage(msg)) {
+    
+    for (size_t i = 0; i < listeners_.size(); ++i) {
+      if (listeners_[i]->HandleMessage(msg)) {
         handled = true;
         break;
       }

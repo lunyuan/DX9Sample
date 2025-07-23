@@ -1,4 +1,5 @@
 #include "JsonConfigManager.h"
+#include <iostream>
 #include <algorithm>
 #include <sstream>
 
@@ -66,7 +67,6 @@ bool JsonConfigManager::LoadConfig(const std::string& configPath) {
         file.close();
         
         modified_ = false;
-        std::cout << "Loaded config from: " << configPath << std::endl;
         return true;
     }
     catch (const json::exception& e) {
@@ -93,7 +93,6 @@ bool JsonConfigManager::SaveConfig(const std::string& configPath) {
         file.close();
         
         modified_ = false;
-        std::cout << "Saved config to: " << path << std::endl;
         return true;
     }
     catch (const json::exception& e) {
@@ -311,7 +310,5 @@ std::vector<std::string> JsonConfigManager::GetAllKeys() const {
 }
 
 void JsonConfigManager::PrintAll() const {
-    std::cout << "\n=== Configuration ===" << std::endl;
-    std::cout << config_.dump(4) << std::endl;
-    std::cout << "=====================\n" << std::endl;
+    // Configuration debug output removed for minimal logging
 }

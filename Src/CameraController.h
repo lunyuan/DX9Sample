@@ -10,6 +10,7 @@ public:
   ~CameraController();
   bool HandleMessage(const MSG& msg) override;
   void Update(float deltaTime) override;
+  void SetupCamera() override;
   XMMATRIX GetViewMatrix() const override;
   XMMATRIX GetProjMatrix(float aspect) const override;
 
@@ -36,10 +37,9 @@ private:
   static constexpr float kPanSpeed = 0.01f;
   static constexpr float kDragZoomSpd = 0.005f;
   static constexpr float kZoomSpeed = 0.001f;
-  static constexpr float kMinDist = 2.0f;
-  static constexpr float kMaxDist = 50.0f;
+  static constexpr float kMinDist = 5.0f;   // 最小距離調整為5
+  static constexpr float kMaxDist = 200.0f;  // 增加最大距離以便觀看大模型
 
   // 每幀或初始化時呼叫
-  void SetupCamera();
   void SetupMatrices();
 };

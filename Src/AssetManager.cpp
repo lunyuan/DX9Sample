@@ -1,10 +1,15 @@
 #include "AssetManager.h"
+#include <iostream>
 #include "ModelManager.h"
 #include "TextureManager.h"
 #include "XModelLoader.h"
+#include "XModelEnhanced.h"
+#include "XModelEnhancedLoader.h"
+#include "FbxLoader.h"
+#include "GltfLoader.h"
+#include "GltfModelLoader.h"
 #include "ModelData.h"
 #include <d3dx9.h>
-#include <iostream>
 #include <algorithm>
 #include <filesystem>
 
@@ -59,7 +64,6 @@ bool AssetManager::Initialize(IDirect3DDevice9* device) {
         return false;
     }
     
-    std::cout << "AssetManager initialized successfully" << std::endl;
     return true;
 }
 
@@ -72,7 +76,6 @@ void AssetManager::SetAssetRoot(const std::string& rootPath) {
         assetRoot_ += "/";
     }
     
-    std::cout << "Asset root set to: " << assetRoot_ << std::endl;
 }
 
 void AssetManager::SetAssetPath(AssetType type, const std::string& relativePath) {
@@ -146,34 +149,42 @@ std::shared_ptr<ModelData> AssetManager::LoadModelImpl(const std::string& fullPa
     
     // 載入模型
     try {
-        std::wstring wPath(fullPath.begin(), fullPath.end());
+        // 根據檔案副檔名選擇適當的載入器
+        fs::path filePath(fullPath);
+        std::string extension = filePath.extension().string();
+        std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
         
-        // 使用 ModelManager 載入
-        modelManager_->LoadModels(wPath, device_);
-        auto modelNames = modelManager_->GetLoadedModelNames();
+        std::unique_ptr<IModelLoader> loader;
+        if (extension == ".fbx") {
+            loader = std::make_unique<FbxLoader>();
+        } else if (extension == ".x") {
+            loader = std::make_unique<XModelLoader>();
+        } else {
+            std::cerr << "Unsupported model format: " << extension << std::endl;
+            return nullptr;
+        }
         
-        if (!modelNames.empty()) {
+        // 直接使用載入器載入模型
+        auto models = loader->Load(filePath, device_);
+        
+        if (!models.empty()) {
             // 取得第一個模型
-            const ModelData* modelPtr = modelManager_->GetModel(modelNames[0]);
-            if (modelPtr) {
-                auto modelData = std::make_shared<ModelData>(*modelPtr);
-                
-                // 加入快取
-                {
-                    std::lock_guard<std::shared_mutex> lock(assetMutex_);
-                    AssetItem& item = assets_[key];
-                    item.path = fullPath;
-                    item.type = AssetType::Model;
-                    item.state = AssetLoadState::Loaded;
-                    item.data = modelData;
-                    item.refCount = 1;
-                    item.lastAccessed = std::chrono::steady_clock::now();
-                }
-                
-                loadOperations_++;
-                std::cout << "Loaded model: " << fullPath << std::endl;
-                return modelData;
+            auto modelData = std::make_shared<ModelData>(std::move(models.begin()->second));
+            
+            // 加入快取
+            {
+                std::lock_guard<std::shared_mutex> lock(assetMutex_);
+                AssetItem& item = assets_[key];
+                item.path = fullPath;
+                item.type = AssetType::Model;
+                item.state = AssetLoadState::Loaded;
+                item.data = modelData;
+                item.refCount = 1;
+                item.lastAccessed = std::chrono::steady_clock::now();
             }
+            
+            loadOperations_++;
+            return modelData;
         }
     }
     catch (const std::exception& e) {
@@ -192,6 +203,64 @@ std::shared_ptr<ModelData> AssetManager::LoadModelImpl(const std::string& fullPa
     return nullptr;
 }
 
+std::vector<std::shared_ptr<ModelData>> AssetManager::LoadAllModelsImpl(const std::string& fullPath) {
+    std::vector<std::shared_ptr<ModelData>> result;
+    std::string baseKey = GenerateAssetKey(fullPath);
+    
+    try {
+        // 根據檔案副檔名選擇適當的載入器
+        fs::path filePath(fullPath);
+        std::string extension = filePath.extension().string();
+        std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
+        
+        // Use unified IModelLoader interface for all formats
+        std::unique_ptr<IModelLoader> loader;
+        
+        if (extension == ".x") {
+            // Use enhanced loader for .x files to get proper separation
+            loader = std::make_unique<XModelEnhancedLoader>();
+        } else if (extension == ".fbx") {
+            loader = std::make_unique<FbxLoader>();
+        } else if (extension == ".gltf" || extension == ".glb") {
+            loader = std::make_unique<GltfModelLoader>();
+        } else {
+            std::cerr << "Unsupported model format: " << extension << std::endl;
+            return result;
+        }
+        
+        // Load models using the unified interface
+        auto models = loader->Load(filePath, device_);
+        
+        
+        for (auto& [modelName, modelData] : models) {
+            auto sharedModelData = std::make_shared<ModelData>(std::move(modelData));
+            result.push_back(sharedModelData);
+            
+            // 加入快取，使用模型名稱作為鍵值的一部分
+            std::string key = baseKey + "::" + modelName;
+            {
+                std::lock_guard<std::shared_mutex> lock(assetMutex_);
+                AssetItem& item = assets_[key];
+                item.path = fullPath + "::" + modelName;
+                item.type = AssetType::Model;
+                item.state = AssetLoadState::Loaded;
+                item.data = sharedModelData;
+                item.refCount = 1;
+                item.lastAccessed = std::chrono::steady_clock::now();
+            }
+            
+        }
+        
+        loadOperations_++;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Failed to load models from " << fullPath << ": " << e.what() << std::endl;
+        std::cerr << "LoadAllModelsImpl error: " << e.what() << std::endl;
+    }
+    
+    return result;
+}
+
 std::shared_ptr<IDirect3DTexture9> AssetManager::LoadTextureImpl(const std::string& fullPath) {
     std::string key = GenerateAssetKey(fullPath);
     
@@ -207,8 +276,8 @@ std::shared_ptr<IDirect3DTexture9> AssetManager::LoadTextureImpl(const std::stri
     
     // 載入紋理
     try {
-        std::wstring wPath(fullPath.begin(), fullPath.end());
-        auto texture = textureManager_->LoadTexture(wPath);
+        std::filesystem::path fsPath(fullPath);
+        auto texture = textureManager_->Load(fsPath);
         
         if (texture) {
             // 加入快取
@@ -224,8 +293,7 @@ std::shared_ptr<IDirect3DTexture9> AssetManager::LoadTextureImpl(const std::stri
             }
             
             loadOperations_++;
-            std::cout << "Loaded texture: " << fullPath << std::endl;
-            return texture;
+            return std::static_pointer_cast<IDirect3DTexture9>(texture);
         }
     }
     catch (const std::exception& e) {
@@ -276,7 +344,6 @@ void AssetManager::UnloadAsset(const std::string& assetPath) {
     auto it = assets_.find(key);
     if (it != assets_.end()) {
         assets_.erase(it);
-        std::cout << "Unloaded asset: " << assetPath << std::endl;
     }
 }
 
@@ -288,7 +355,6 @@ void AssetManager::UnloadUnusedAssets() {
     while (it != assets_.end()) {
         auto timeSinceAccess = now - it->second.lastAccessed;
         if (timeSinceAccess > unusedAssetTimeout_ && it->second.refCount == 0) {
-            std::cout << "Unloading unused asset: " << it->second.path << std::endl;
             it = assets_.erase(it);
         } else {
             ++it;
@@ -300,7 +366,6 @@ void AssetManager::UnloadAll() {
     std::lock_guard<std::shared_mutex> lock(assetMutex_);
     assets_.clear();
     totalMemoryUsage_ = 0;
-    std::cout << "Unloaded all assets" << std::endl;
 }
 
 void AssetManager::EnableHotReload(bool enable) {
@@ -340,14 +405,7 @@ size_t AssetManager::GetAssetCount() const {
 void AssetManager::PrintDebugInfo() const {
     std::shared_lock<std::shared_mutex> lock(assetMutex_);
     
-    std::cout << "\n=== AssetManager Debug Info ===" << std::endl;
-    std::cout << "Asset Root: " << assetRoot_ << std::endl;
-    std::cout << "Total Assets: " << assets_.size() << std::endl;
-    std::cout << "Memory Usage: " << totalMemoryUsage_ << " bytes" << std::endl;
-    std::cout << "Load Operations: " << loadOperations_ << std::endl;
-    std::cout << "Hot Reload: " << (hotReloadEnabled_ ? "Enabled" : "Disabled") << std::endl;
-    
-    std::cout << "\nLoaded Assets:" << std::endl;
+    // AssetManager debug info removed for minimal logging
     for (const auto& pair : assets_) {
         const AssetItem& item = pair.second;
         std::string typeStr;
@@ -367,9 +425,7 @@ void AssetManager::PrintDebugInfo() const {
             case AssetLoadState::Failed: stateStr = "Failed"; break;
         }
         
-        std::cout << "  " << typeStr << " [" << stateStr << "] " << item.path << std::endl;
     }
-    std::cout << "==============================\n" << std::endl;
 }
 
 void AssetManager::UpdateAssetAccess(const std::string& key) {
@@ -392,7 +448,6 @@ void AssetManager::StartFileWatcher() {
         }
     });
     
-    std::cout << "File watcher started" << std::endl;
 }
 
 void AssetManager::StopFileWatcher() {
@@ -402,13 +457,11 @@ void AssetManager::StopFileWatcher() {
             fileWatcherThread_->join();
         }
         fileWatcherThread_.reset();
-        std::cout << "File watcher stopped" << std::endl;
     }
 }
 
 void AssetManager::OnFileChanged(const std::string& filePath) {
     // 檔案變化處理
-    std::cout << "File changed: " << filePath << std::endl;
     ReloadAsset(filePath);
 }
 
@@ -416,6 +469,11 @@ void AssetManager::OnFileChanged(const std::string& filePath) {
 std::shared_ptr<ModelData> AssetManager::LoadModel(const std::string& assetPath) {
     std::string fullPath = ResolveAssetPath(assetPath, AssetType::Model);
     return LoadModelImpl(fullPath);
+}
+
+std::vector<std::shared_ptr<ModelData>> AssetManager::LoadAllModels(const std::string& assetPath) {
+    std::string fullPath = ResolveAssetPath(assetPath, AssetType::Model);
+    return LoadAllModelsImpl(fullPath);
 }
 
 std::shared_ptr<IDirect3DTexture9> AssetManager::LoadTexture(const std::string& assetPath) {
