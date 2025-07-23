@@ -6,6 +6,8 @@
 #include "tiny_gltf.h"
 #include <iostream>
 #include <fstream>
+#include <cstdio>
+#include <windows.h>
 
 std::map<std::string, ModelData> GltfModelLoader::Load(
     const std::filesystem::path& file, IDirect3DDevice9* device) const {
@@ -123,10 +125,61 @@ std::map<std::string, ModelData> GltfModelLoader::Load(
                     }
                 }
                 
+                // 處理材質和貼圖
+                if (prim.material >= 0 && prim.material < static_cast<int>(gltfModel.materials.size())) {
+                    const auto& material = gltfModel.materials[prim.material];
+                    
+                    // 創建材質
+                    Material modelMat;
+                    
+                    // 設置材質屬性
+                    const auto& pbr = material.pbrMetallicRoughness;
+                    if (pbr.baseColorFactor.size() >= 4) {
+                        modelMat.mat.Diffuse.r = static_cast<float>(pbr.baseColorFactor[0]);
+                        modelMat.mat.Diffuse.g = static_cast<float>(pbr.baseColorFactor[1]);
+                        modelMat.mat.Diffuse.b = static_cast<float>(pbr.baseColorFactor[2]);
+                        modelMat.mat.Diffuse.a = static_cast<float>(pbr.baseColorFactor[3]);
+                    }
+                    modelMat.mat.Ambient = modelMat.mat.Diffuse;
+                    modelMat.mat.Specular = D3DXCOLOR(1.0f, 1.0f, 1.0f, 1.0f);
+                    modelMat.mat.Power = 10.0f;
+                    
+                    // 處理貼圖
+                    if (pbr.baseColorTexture.index >= 0 && 
+                        pbr.baseColorTexture.index < static_cast<int>(gltfModel.textures.size())) {
+                        
+                        const auto& texture = gltfModel.textures[pbr.baseColorTexture.index];
+                        if (texture.source >= 0 && texture.source < static_cast<int>(gltfModel.images.size())) {
+                            const auto& image = gltfModel.images[texture.source];
+                            
+                            // 取得貼圖檔案名稱
+                            std::string textureFileName = image.uri;
+                            modelMat.textureFileName = textureFileName;
+                            
+                            char debugMsg[256];
+                            sprintf_s(debugMsg, "GltfModelLoader: Found texture '%s' for material %d\n",
+                                      textureFileName.c_str(), prim.material);
+                            OutputDebugStringA(debugMsg);
+                        }
+                    }
+                    
+                    modelData.mesh.materials.push_back(modelMat);
+                } else {
+                    // 沒有材質，創建預設材質
+                    Material defaultMat;
+                    defaultMat.mat.Diffuse = D3DXCOLOR(1.0f, 1.0f, 1.0f, 1.0f);
+                    defaultMat.mat.Ambient = D3DXCOLOR(1.0f, 1.0f, 1.0f, 1.0f);
+                    defaultMat.mat.Specular = D3DXCOLOR(1.0f, 1.0f, 1.0f, 1.0f);
+                    defaultMat.mat.Power = 10.0f;
+                    modelData.mesh.materials.push_back(defaultMat);
+                }
+                
                 // 創建 Direct3D 緩衝區
                 if (modelData.mesh.CreateBuffers(device)) {
-                    // 設置紋理 - 使用 Horse10.bmp
-                    modelData.mesh.SetTexture(device, "Horse10.bmp");
+                    // 載入貼圖（如果有的話）
+                    if (!modelData.mesh.materials.empty() && !modelData.mesh.materials[0].textureFileName.empty()) {
+                        modelData.mesh.SetTexture(device, modelData.mesh.materials[0].textureFileName);
+                    }
                     
                     // 產生模型名稱
                     std::string modelName = mesh.name;

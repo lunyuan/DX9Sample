@@ -35,22 +35,34 @@ The DirectX 9 engine now fully supports loading and rendering glTF 2.0 files, wi
    - `GameScene.cpp`: Changed to load horse_group.gltf directly
    - `MultiModelGltfConverter.cpp`: Handles multi-model conversion
 
-2. **Texture Handling**
-   - glTF loader applies Horse10.bmp texture to all loaded models
-   - Uses SkinMesh::SetTexture(device, filename) for texture application
+2. **Texture Handling - FIXED**
+   - MultiModelGltfConverter exports texture references from X files
+   - GltfModelLoader reads texture filenames from glTF materials
+   - Automatically loads textures using SkinMesh::SetTexture(device, filename)
    - Vertex colors set to white (255, 255, 255) for proper lighting
+   - Supports multiple textures (e.g., HORSE3.BMP, Horse10.bmp)
 
 3. **Startup Behavior**
-   - Application now loads horse_group.gltf on startup
-   - All 7 horses render with texture applied
-   - Convert button functionality preserved (clears and reloads from glTF)
+   - Application loads horse_group.x on startup (or horse_group_textured.gltf if exists)
+   - Convert button creates horse_group_textured.gltf with full texture support
+   - All 7 horses render with their original textures from X file
+
+### Recent Fixes (2025-07-23)
+
+1. **Fixed: X file textures not transferring to glTF**
+   - MultiModelGltfConverter now properly reads texture filenames from X materials
+   - Creates "images" and "textures" sections in glTF output
+   - Each material includes correct baseColorTexture reference
+
+2. **Fixed: Hardcoded texture in glTF loader**
+   - GltfModelLoader now reads texture info from glTF file
+   - No more hardcoded Horse10.bmp - uses actual textures from glTF
 
 ### Known Limitations
 
 1. **Material System**
-   - glTF materials are created but not fully utilized
-   - Textures are hardcoded to Horse10.bmp rather than read from glTF
-   - PBR material properties not implemented
+   - PBR material properties not fully utilized (only baseColorTexture)
+   - No support for normal maps, metallic/roughness maps
 
 2. **Animation Support**
    - Skeletal animation data not yet converted or loaded from glTF
@@ -62,15 +74,18 @@ The DirectX 9 engine now fully supports loading and rendering glTF 2.0 files, wi
 
 ### Testing Results
 
-- Successfully loads 7 horse models from horse_group.gltf
-- Each model has identical geometry (349 vertices, 586 triangles)
-- All models render with Horse10.bmp texture applied
+- Successfully converts horse_group.x to horse_group_textured.gltf
+- Preserves all 7 horse models with proper geometry
+- Exports and loads textures correctly (HORSE3.BMP, Horse10.bmp)
 - No more black rendering issues after vertex color fix
+- Convert button works correctly for X to glTF with textures
 
 ### Future Improvements
 
-1. Read texture information from glTF material definitions
-2. Support for embedded textures and external texture files
+1. ~~Read texture information from glTF material definitions~~ ✓ COMPLETED
+2. Support for embedded textures and binary glTF (.glb)
 3. Implement full PBR material pipeline
 4. Add animation support for glTF files
 5. Optimize buffer creation and memory usage
+6. Support texture coordinate transforms
+7. Handle missing texture files gracefully

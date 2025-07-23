@@ -8,6 +8,8 @@
 #include "ModelData.h"
 #include "tiny_gltf.h"
 #include <algorithm>
+#include <cstdio>  // for sprintf_s and OutputDebugStringA
+#include <windows.h>
 
 // Prevent min/max macro conflicts
 #ifdef min
@@ -188,17 +190,86 @@ bool ConvertXToGltfMultiModel(IDirect3DDevice9* device, IAssetManager* assetMana
             primitive.attributes["TEXCOORD_0"] = baseAccessorIdx + 2;
             primitive.indices = baseAccessorIdx + 3;
             
-            // 使用共用材質
-            if (modelIdx == 0) {
-                tinygltf::Material material;
-                material.name = "SharedMaterial";
-                material.pbrMetallicRoughness.baseColorFactor = {1.0, 1.0, 1.0, 1.0};
-                material.pbrMetallicRoughness.metallicFactor = 0.0;
-                material.pbrMetallicRoughness.roughnessFactor = 0.5;
-                material.doubleSided = true;
-                gltfModel.materials.push_back(material);
+            // 處理材質和貼圖
+            if (!xModel.mesh.materials.empty()) {
+                // 為每個材質創建對應的 glTF 材質
+                size_t materialStartIdx = gltfModel.materials.size();
+                
+                for (size_t matIdx = 0; matIdx < xModel.mesh.materials.size(); ++matIdx) {
+                    const auto& xMat = xModel.mesh.materials[matIdx];
+                    
+                    tinygltf::Material material;
+                    material.name = "Material_" + std::to_string(modelIdx) + "_" + std::to_string(matIdx);
+                    
+                    // 設置基本顏色
+                    material.pbrMetallicRoughness.baseColorFactor = {
+                        xMat.mat.Diffuse.r,
+                        xMat.mat.Diffuse.g,
+                        xMat.mat.Diffuse.b,
+                        xMat.mat.Diffuse.a
+                    };
+                    
+                    material.pbrMetallicRoughness.metallicFactor = 0.0;
+                    material.pbrMetallicRoughness.roughnessFactor = 0.5;
+                    material.doubleSided = true;
+                    
+                    // 處理貼圖
+                    if (!xMat.textureFileName.empty()) {
+                        // 檢查貼圖是否已經存在
+                        int imageIdx = -1;
+                        for (size_t i = 0; i < gltfModel.images.size(); ++i) {
+                            if (gltfModel.images[i].uri == xMat.textureFileName) {
+                                imageIdx = static_cast<int>(i);
+                                break;
+                            }
+                        }
+                        
+                        // 如果貼圖不存在，創建新的
+                        if (imageIdx == -1) {
+                            tinygltf::Image image;
+                            image.uri = xMat.textureFileName;
+                            imageIdx = static_cast<int>(gltfModel.images.size());
+                            gltfModel.images.push_back(image);
+                            
+                            // 創建貼圖
+                            tinygltf::Texture texture;
+                            texture.source = imageIdx;
+                            int textureIdx = static_cast<int>(gltfModel.textures.size());
+                            gltfModel.textures.push_back(texture);
+                            
+                            // 設置材質的基本顏色貼圖
+                            material.pbrMetallicRoughness.baseColorTexture.index = textureIdx;
+                            material.pbrMetallicRoughness.baseColorTexture.texCoord = 0;
+                        } else {
+                            // 使用現有的貼圖
+                            material.pbrMetallicRoughness.baseColorTexture.index = imageIdx;
+                            material.pbrMetallicRoughness.baseColorTexture.texCoord = 0;
+                        }
+                        
+                        char debugMsg[256];
+                        sprintf_s(debugMsg, "glTF Converter: Added texture '%s' for model %zu material %zu\n",
+                                  xMat.textureFileName.c_str(), modelIdx, matIdx);
+                        OutputDebugStringA(debugMsg);
+                    }
+                    
+                    gltfModel.materials.push_back(material);
+                }
+                
+                // 使用第一個材質（簡化處理）
+                primitive.material = static_cast<int>(materialStartIdx);
+            } else {
+                // 如果沒有材質，創建預設材質
+                if (gltfModel.materials.empty()) {
+                    tinygltf::Material material;
+                    material.name = "DefaultMaterial";
+                    material.pbrMetallicRoughness.baseColorFactor = {1.0, 1.0, 1.0, 1.0};
+                    material.pbrMetallicRoughness.metallicFactor = 0.0;
+                    material.pbrMetallicRoughness.roughnessFactor = 0.5;
+                    material.doubleSided = true;
+                    gltfModel.materials.push_back(material);
+                }
+                primitive.material = 0;
             }
-            primitive.material = 0;
             
             // 創建網格
             tinygltf::Mesh mesh;

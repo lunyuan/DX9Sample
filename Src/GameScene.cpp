@@ -787,13 +787,15 @@ void GameScene::LoadGameAssets() {
     // 載入遊戲資產
     try {
         // 直接載入 glTF 檔案
-        auto models = assetManager->LoadAllModels("horse_group.gltf");
+        std::vector<std::shared_ptr<ModelData>> models;
+        models = assetManager->LoadAllModels("horse_group_textured.gltf");
+        OutputDebugStringA("Loading glTF file directly\n");
         
         // 輸出到檔案以便調試
         std::ofstream loadLog("initial_load.txt");
         
         if (!models.empty()) {
-            loadLog << "Successfully loaded " << models.size() << " models from horse_group.gltf" << std::endl;
+            loadLog << "Successfully loaded " << models.size() << " models" << std::endl;
             
             // 顯示每個辉入的模型資訊
             for (size_t i = 0; i < models.size(); ++i) {
@@ -802,6 +804,7 @@ void GameScene::LoadGameAssets() {
                         << models[i]->mesh.indices.size() / 3 << " triangles" << std::endl;
             }
             
+            // 直接賦值，型別相同
             loadedModels_ = models;
             loadLog << "Total models stored: " << loadedModels_.size() << std::endl;
         } else {
@@ -1080,13 +1083,24 @@ void GameScene::OnComponentClicked(UIComponentNew* component) {
 }
 
 void GameScene::ConvertModelToGltf() {
-    // 直接載入現有的 glTF 檔案
-    std::ofstream log("gltf_direct_load.txt");
-    log << "Loading existing glTF file..." << std::endl;
-    log.close();
+    // 執行 X 到 glTF 轉換（包含紋理）
+    auto* device = services_->GetDevice();
+    auto* assetManager = services_->GetAssetManager();
     
-    ClearCurrentModels();
-    LoadGltfModel("horse_group.gltf");
+    if (device && assetManager) {
+        OutputDebugStringA("Converting X to glTF with textures...\n");
+        bool success = ConvertXToGltfMultiModel(device, assetManager, "horse_group.x", "horse_group_textured.gltf");
+        
+        if (success) {
+            OutputDebugStringA("Conversion successful!\n");
+            
+            // 載入轉換後的 glTF 檔案
+            ClearCurrentModels();
+            LoadGltfModel("horse_group_textured.gltf");
+        } else {
+            OutputDebugStringA("Conversion failed!\n");
+        }
+    }
 }
 
 void GameScene::ClearCurrentModels() {

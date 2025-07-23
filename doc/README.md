@@ -66,14 +66,17 @@ Practical examples of loading different 3D model formats.
 ### **MODEL_SYSTEM_REFACTORING.md**
 Refactoring plans for the model loading system with IModelLoader interface.
 
-### **GLTF_CONVERSION_FEATURE.md** *(NEW)*
-Documentation for the X to glTF model conversion feature, including usage and implementation details.
-
-### **MODEL_EXTRACTION_EXAMPLES.md**
-Examples of extracting specific models from files containing multiple objects.
-
 ### **X_FILE_MULTI_OBJECT_LOADING.md**
 Implementation details for enhanced X file loading with multi-object separation.
+
+### **FBX_TEXTURE_LOADING_IMPLEMENTATION.md**
+Complete FBX texture loading implementation with path resolution.
+
+### **GLTF_IMPLEMENTATION_STATUS.md**
+Progress tracking for glTF 2.0 support implementation.
+
+### **GLTF_COMPLETE_IMPLEMENTATION.md** *(NEW)*
+Complete summary of glTF implementation including texture support and X to glTF conversion.
 
 ## Implementation Details
 
@@ -108,4 +111,10 @@ List of all implemented features in the engine, organized by category.
 - **Reference**: Historical documents kept for reference
 - **Deprecated**: Documents scheduled for removal
 
-Last Updated: 2025-07-22
+Last Updated: 2025-07-23
+
+## Recent Updates
+- Added complete glTF implementation with texture support
+- X to glTF conversion now preserves all materials and textures
+- Application updated to load glTF files directly
+- New documentation: GLTF_COMPLETE_IMPLEMENTATION.md

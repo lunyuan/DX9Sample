@@ -91,13 +91,13 @@ Animation system uses skeletal animation with `Skeleton` and `AnimationPlayer` c
 - See `doc/FBX_TEXTURE_LOADING_IMPLEMENTATION.md` for technical details
 
 **glTF File Loading Notes:**
-- glTF 2.0 ASCII format (.gltf) fully supported (2025-07-23)
+- glTF 2.0 ASCII format (.gltf) fully supported with textures (2025-07-23)
 - Multi-model loading works correctly (tested with 7 horse models)
-- Use `LoadAllModels("model.gltf")` to load all meshes
-- Textures must be manually set using `mesh.SetTexture(device, "texture.bmp")`
-- Vertex colors set to white to prevent black rendering
-- Supports conversion from X to glTF with multi-model preservation
-- See `doc/GLTF_IMPLEMENTATION_STATUS.md` for details
+- Use `LoadAllModels("model.gltf")` to load all meshes with textures
+- Textures are automatically loaded from glTF material definitions
+- X to glTF conversion preserves all models and textures
+- Application now loads glTF files directly on startup
+- See `doc/GLTF_COMPLETE_IMPLEMENTATION.md` for full details
 
 ### Key Patterns
 
@@ -208,9 +208,11 @@ The engine currently maintains both legacy and modern architectures for backward
 
 See `doc/ARCHITECTURE_CONSOLIDATION_PLAN.md` for the migration strategy.
 
-**Recent Improvements:**
-- FBX texture loading fully implemented
-- Multi-object X file support enhanced
+**Recent Improvements (2025-07-23):**
+- glTF texture loading and export fully implemented
+- X to glTF conversion preserves all materials and textures
+- Application now uses glTF as primary 3D format
+- Multi-object support for X, FBX, and glTF formats
 - Documentation comprehensively updated
 
 **Cleanup Status (2025-07-23):**

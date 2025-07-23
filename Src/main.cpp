@@ -11,6 +11,7 @@
 #include "SettingsScene.h"
 #include "ISceneManager.h"
 #include "IEventManager.h"
+#include "MultiModelGltfConverter.h"
 
 // 全域 EngineContext 實例
 static std::unique_ptr<IEngineContext> g_engine;
@@ -107,6 +108,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     // Warning: Legacy assets loading failed, continuing with new architecture...
     // 不要退出程式，繼續使用新架構
   }
+
 
   // 5. 註冊所有場景並設置場景管理
   auto* sceneManager = g_engine->GetSceneManager();
