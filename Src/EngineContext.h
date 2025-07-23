@@ -3,22 +3,22 @@
 
 #include <wrl/client.h>
 #include <Windows.h>
-#include "IEngineContext.h"
-#include "ITextureManager.h"
-#include "IEffectManager.h"
-#include "ID3DContext.h"
-#include "IModelManager.h"
-#include "ILightManager.h"
-#include "IScene3D.h"
-#include "IUIManager.h"
-#include "IInputHandler.h"
-#include "ICameraController.h"
-#include "IFullScreenQuad.h"
-#include "IAssetManager.h"
-#include "IConfigManager.h"
-#include "ISceneManager.h"
+#include "../Include/IEngineContext.h"
+#include "../Include/ITextureManager.h"
+#include "../Include/IEffectManager.h"
+#include "../Include/ID3DContext.h"
+#include "../Include/IModelManager.h"
+#include "../Include/ILightManager.h"
+#include "../Include/IScene3D.h"
+#include "../Include/IUIManager.h"
+#include "../Include/IInputHandler.h"
+#include "../Include/ICameraController.h"
+#include "../Include/IFullScreenQuad.h"
+#include "../Include/IAssetManager.h"
+#include "../Include/IConfigManager.h"
+#include "../Include/ISceneManager.h"
 // #include "IUISystem.h" // Removed - using UIManager only
-#include "IEventManager.h"
+#include "../Include/IEventManager.h"
 #include "ServiceLocator.h"
 
 using Microsoft::WRL::ComPtr;

@@ -41,11 +41,11 @@ ModelSaveResult FbxSaver::SaveModel(
         FbxDocumentInfo* sceneInfo = FbxDocumentInfo::Create(fbxManager_, "SceneInfo");
         sceneInfo->mTitle = "DX9Sample Export";
         sceneInfo->mSubject = "3D Model Export";
-        sceneInfo->mAuthor = options.authorName.c_str();
+        sceneInfo->mAuthor = options.author.c_str();
         sceneInfo->mRevision = "1.0";
         sceneInfo->mKeywords = "DX9Sample FBX Export";
-        sceneInfo->mComment = options.comments.c_str();
-        sceneInfo->Original_ApplicationName.Set(options.applicationName.c_str());
+        sceneInfo->mComment = options.copyright.c_str();
+        sceneInfo->Original_ApplicationName.Set("DX9Sample");
         scene->SetSceneInfo(sceneInfo);
         
         // Create mesh node
@@ -59,7 +59,7 @@ ModelSaveResult FbxSaver::SaveModel(
         if (result.success) {
             result.bytesWritten = std::filesystem::file_size(file);
         } else {
-            result.errorMessage = "Failed to export FBX file";
+            result.error = "Failed to export FBX file";
         }
         
         // Cleanup
@@ -67,7 +67,7 @@ ModelSaveResult FbxSaver::SaveModel(
         
     } catch (const std::exception& e) {
         result.success = false;
-        result.errorMessage = e.what();
+        result.error = e.what();
     }
     
     return result;
@@ -87,8 +87,8 @@ ModelSaveResult FbxSaver::SaveAll(
         // Set scene info
         FbxDocumentInfo* sceneInfo = FbxDocumentInfo::Create(fbxManager_, "SceneInfo");
         sceneInfo->mTitle = "DX9Sample Multi-Model Export";
-        sceneInfo->mAuthor = options.authorName.c_str();
-        sceneInfo->Original_ApplicationName.Set(options.applicationName.c_str());
+        sceneInfo->mAuthor = options.author.c_str();
+        sceneInfo->Original_ApplicationName.Set("DX9Sample");
         scene->SetSceneInfo(sceneInfo);
         
         // Create a node for each model
@@ -104,7 +104,7 @@ ModelSaveResult FbxSaver::SaveAll(
             result.bytesWritten = std::filesystem::file_size(file);
             std::cout << "Exported " << models.size() << " models to " << file << std::endl;
         } else {
-            result.errorMessage = "Failed to export FBX file";
+            result.error = "Failed to export FBX file";
         }
         
         // Cleanup
@@ -112,7 +112,7 @@ ModelSaveResult FbxSaver::SaveAll(
         
     } catch (const std::exception& e) {
         result.success = false;
-        result.errorMessage = e.what();
+        result.error = e.what();
     }
     
     return result;
@@ -263,9 +263,9 @@ bool FbxSaver::ExportScene(FbxScene* scene, const std::filesystem::path& file, c
     // Set export options
     FbxIOSettings* ios = fbxManager_->GetIOSettings();
     ios->SetBoolProp(EXP_FBX_MATERIAL, true);
-    ios->SetBoolProp(EXP_FBX_TEXTURE, options.includeMaterials);
+    ios->SetBoolProp(EXP_FBX_TEXTURE, true); // Default: include materials
     ios->SetBoolProp(EXP_FBX_EMBEDDED, options.embedTextures);
-    ios->SetBoolProp(EXP_FBX_ANIMATION, options.includeAnimations);
+    ios->SetBoolProp(EXP_FBX_ANIMATION, true); // Default: include animations
     ios->SetBoolProp(EXP_FBX_GLOBAL_SETTINGS, true);
     
     // Export scene
@@ -287,16 +287,17 @@ bool FbxSaver::CanSave(const ModelData& model) const {
 ModelSaveCapabilities FbxSaver::GetCapabilities() const {
     ModelSaveCapabilities caps;
     caps.supportsAnimation = true;
-    caps.supportsSkeletalAnimation = true;
-    caps.supportsMorphTargets = false;
-    caps.supportsPBRMaterials = false;
-    caps.supportsMultipleUVSets = true;
-    caps.supportsVertexColors = true;
-    caps.supportsEmbeddedTextures = true;
-    caps.supportsCompression = true;
-    caps.supportsSceneHierarchy = true;
-    caps.supportsMetadata = true;
-    caps.maxBonesPerVertex = 4;
+    // Additional capabilities (not in interface)
+    // caps.supportsSkeletalAnimation = true;
+    // caps.supportsMorphTargets = false;
+    // caps.supportsPBRMaterials = false;
+    // caps.supportsMultipleUVSets = true;
+    // caps.supportsVertexColors = true;
+    // caps.supportsEmbeddedTextures = true;
+    // caps.supportsCompression = true;
+    // caps.supportsSceneHierarchy = true;
+    // caps.supportsMetadata = true;
+    // caps.maxBonesPerVertex = 4;
     caps.supportedTextureFormats = { "jpg", "png", "tga", "bmp" };
     return caps;
 }

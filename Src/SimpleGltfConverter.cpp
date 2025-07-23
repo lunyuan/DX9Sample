@@ -231,7 +231,7 @@ bool SimpleConvertXToGltf(IDirect3DDevice9* device, const std::string& xFile, co
             return false;
         }
         
-    } catch (const std::exception& e) {
+    } catch (const std::exception&) {
         return false;
     }
 }
@@ -464,7 +464,7 @@ bool SimpleConvertXToGltfWithAssetManager(IDirect3DDevice9* device, IAssetManage
             return false;
         }
         
-    } catch (const std::exception& e) {
+    } catch (const std::exception&) {
         return false;
     }
 }

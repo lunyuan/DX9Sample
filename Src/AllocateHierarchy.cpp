@@ -8,6 +8,7 @@
 #include <iostream>
 #include <vector>            // std::vector
 #include <cctype>            // ::tolower, ::toupper
+#include <memory>            // std::unique_ptr, std::make_unique
 #include "AllocateHierarchy.h"
 
 // Step 1: Constructor 實作 // error check
@@ -18,9 +19,17 @@ AllocateHierarchy::AllocateHierarchy(IDirect3DDevice9* device) noexcept
 // Step 2: CreateFrame 實作 // error check
 STDMETHODIMP AllocateHierarchy::CreateFrame( LPCSTR Name, D3DXFRAME** ppNewFrame ) {
   if (!ppNewFrame) return E_POINTER;
-  FrameEx* frame = new FrameEx();
-  if (!frame) return E_OUTOFMEMORY;
-  frame->Name = Name ? _strdup(Name) : nullptr;
+  // Use unique_ptr for exception safety, release at the end
+  auto frame = std::make_unique<FrameEx>();
+  
+  // Use std::string instead of _strdup
+  if (Name) {
+    size_t len = strlen(Name) + 1;
+    frame->Name = new char[len];
+    strcpy_s(frame->Name, len, Name);
+  } else {
+    frame->Name = nullptr;
+  }
   D3DXMatrixIdentity(&frame->TransformationMatrix);
   frame->CombinedTransform = frame->TransformationMatrix;
   DirectX::XMStoreFloat4x4(&frame->dxTransformationMatrix, DirectX::XMMatrixIdentity());
@@ -30,7 +39,7 @@ STDMETHODIMP AllocateHierarchy::CreateFrame( LPCSTR Name, D3DXFRAME** ppNewFrame
   frame->pFrameFirstChild = nullptr;
   //// 將 FrameEx 指標轉換為 D3DXFRAME 指標
   //*ppNewFrame = reinterpret_cast<D3DXFRAME*>(frame);
-  *ppNewFrame = frame;
+  *ppNewFrame = frame.release(); // Transfer ownership to DirectX
   return S_OK;
 }
 
@@ -47,11 +56,17 @@ STDMETHODIMP AllocateHierarchy::CreateMeshContainer(
 {
   if (!pMeshData || !ppNewMeshContainer) return E_INVALIDARG;
 
-  // 建立 MeshContainerEx
-  MeshContainerEx* mc = new MeshContainerEx();
-  if (!mc) return E_OUTOFMEMORY;
+  // 建立 MeshContainerEx with unique_ptr for exception safety
+  auto mc = std::make_unique<MeshContainerEx>();
 
-  mc->Name = Name ? _strdup(Name) : nullptr;
+  // Use proper string allocation instead of _strdup
+  if (Name) {
+    size_t len = strlen(Name) + 1;
+    mc->Name = new char[len];
+    strcpy_s(mc->Name, len, Name);
+  } else {
+    mc->Name = nullptr;
+  }
   mc->m_pSkinInfo = pSkinInfo;
   if (pSkinInfo) {
     mc->pSkinInfo = pSkinInfo; // 保存骨架資訊
@@ -70,8 +85,7 @@ STDMETHODIMP AllocateHierarchy::CreateMeshContainer(
     &mc->MeshData.pMesh
   );
   if (FAILED(hr) || !mc->MeshData.pMesh) {
-    delete mc;
-    return hr;
+    return hr; // unique_ptr will clean up automatically
   }
   
   // Also set m_pMesh for compatibility
@@ -80,10 +94,11 @@ STDMETHODIMP AllocateHierarchy::CreateMeshContainer(
   mc->NumMaterials = numMaterials;
   mc->m_Textures.resize(numMaterials);
   mc->m_TextureFileNames.resize(numMaterials);
-  mc->m_pMaterials = new D3DMATERIAL9[numMaterials];
-  
-  // 設定基類的 pMaterials 指標
-  mc->pMaterials = new D3DXMATERIAL[numMaterials];
+  // Use std::vector instead of raw arrays
+  auto materials = std::make_unique<D3DMATERIAL9[]>(numMaterials);
+  auto dxMaterials = std::make_unique<D3DXMATERIAL[]>(numMaterials);
+  mc->m_pMaterials = materials.get();
+  mc->pMaterials = dxMaterials.get();
   
   for (UINT i = 0; i < numMaterials; i++) {
     // 複製材質資料
@@ -160,21 +175,23 @@ STDMETHODIMP AllocateHierarchy::CreateMeshContainer(
   // 備份 adjacency
   hr = D3DXCreateBuffer(numMaterials * 3 * sizeof(DWORD), &mc->m_pAdjacency);
   if (FAILED(hr) || !mc->m_pAdjacency) {
-    delete[] mc->m_pMaterials;
     mc->MeshData.pMesh->Release();
-    delete mc;
-    return hr;
+    return hr; // unique_ptr will clean up automatically
   }
   memcpy(mc->m_pAdjacency->GetBufferPointer(), pAdjacency, numMaterials * 3 * sizeof(DWORD));
 
-  *ppNewMeshContainer = reinterpret_cast<D3DXMESHCONTAINER*>(mc);
+  // Release the arrays to DirectX ownership
+  materials.release();
+  dxMaterials.release();
+  
+  *ppNewMeshContainer = reinterpret_cast<D3DXMESHCONTAINER*>(mc.release());
   return S_OK;
 }
 
 // Step 4: DestroyFrame 實作 // error check
 STDMETHODIMP AllocateHierarchy::DestroyFrame(D3DXFRAME* pFrame ) {
   if (!pFrame) return E_INVALIDARG;
-  free(pFrame->Name);
+  delete[] pFrame->Name; // Changed from free to delete[] to match allocation
   delete reinterpret_cast<FrameEx*>(pFrame);
   return S_OK;
 }

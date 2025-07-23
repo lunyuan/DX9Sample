@@ -1,6 +1,6 @@
 ﻿#include "Scene3D.h"
 #include <d3dx9.h>
-#include "SkinMesh.h"
+#include "Src/SkinMesh.h"
 
 // Factory 函式實作
 std::unique_ptr<IScene3D> CreateScene3D() {

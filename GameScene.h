@@ -1,9 +1,9 @@
 #pragma once
 
 #include "Scene.h"
-#include "EventManager.h"
-#include "IEventManager.h"
-#include "IUIListener.h"
+#include "Src/EventManager.h"
+#include "Include/IEventManager.h"
+#include "Include/IUIListener.h"
 #include <memory>
 #include <map>
 #include <vector>

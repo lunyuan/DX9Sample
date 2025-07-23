@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Scene.h"
-#include "EventManager.h"
+#include "Src/EventManager.h"
 #include <memory>
 
 // 暫停場景事件

@@ -1,5 +1,5 @@
 ﻿#pragma once
-#include "IScene3D.h"
+#include "Include/IScene3D.h"
 #include <wrl/client.h>
 #include <d3dx9.h>
 

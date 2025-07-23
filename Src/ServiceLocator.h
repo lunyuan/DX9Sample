@@ -12,7 +12,7 @@ struct ISceneManager;
 struct IDirect3DDevice9;
 struct ICameraController;
 
-class ServiceLocator : public IServiceLocator {
+struct ServiceLocator : public IServiceLocator {
 public:
     ServiceLocator();
     ~ServiceLocator() = default;

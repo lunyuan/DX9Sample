@@ -5,13 +5,13 @@
 #include <fstream>
 #include <io.h>
 #include <fcntl.h>
-#include "EngineContext.h"
+#include "Include/IEngineContext.h"
 #include "GameScene.h"
 #include "PauseScene.h"
 #include "SettingsScene.h"
-#include "ISceneManager.h"
-#include "IEventManager.h"
-#include "MultiModelGltfConverter.h"
+#include "Include/ISceneManager.h"
+#include "Include/IEventManager.h"
+#include "Src/MultiModelGltfConverter.h"
 
 // 全域 EngineContext 實例
 static std::unique_ptr<IEngineContext> g_engine;

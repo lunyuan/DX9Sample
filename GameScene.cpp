@@ -3,23 +3,23 @@
 #include <fstream>
 #include "PauseScene.h"
 // #include "IUISystem.h" // Removed - using UIManager only
-#include "IUIManager.h"
-#include "UIManager.h"  // 需要具體類別來使用 GetImageSize
-#include "IAssetManager.h"
-#include "IConfigManager.h"
-#include "ISceneManager.h"
-#include "ICameraController.h"
-#include "ModelData.h"
+#include "Include/IUIManager.h"
+#include "Src/UIManager.h"  // 需要具體類別來使用 GetImageSize
+#include "Include/IAssetManager.h"
+#include "Include/IConfigManager.h"
+#include "Include/ISceneManager.h"
+#include "Include/ICameraController.h"
+#include "Src/ModelData.h"
 #include <d3d9.h>
 #include <d3dx9.h>
 #include <chrono>
 #include <cmath>
-#include "AnimationPlayer.h"
-#include "UISerializer.h"
+#include "Src/AnimationPlayer.h"
+#include "Src/UISerializer.h"
 #include <filesystem>
-#include "FbxSaver.h"
-#include "SimpleGltfConverter.h"
-#include "MultiModelGltfConverter.h"
+#include "Src/FbxSaver.h"
+#include "Src/SimpleGltfConverter.h"
+#include "Src/MultiModelGltfConverter.h"
 
 GameScene::GameScene() 
     : Scene("GameScene")

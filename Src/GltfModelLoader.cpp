@@ -195,7 +195,7 @@ std::map<std::string, ModelData> GltfModelLoader::Load(
             }
         }
         
-    } catch (const std::exception& e) {
+    } catch (const std::exception&) {
         // 錯誤處理
     }
     

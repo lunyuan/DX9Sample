@@ -134,7 +134,7 @@ bool ConvertXToGltfMultiModel(IDirect3DDevice9* device, IAssetManager* assetMana
             
             // 位置存取器
             tinygltf::Accessor posAccessor;
-            posAccessor.bufferView = baseViewIdx;
+            posAccessor.bufferView = static_cast<int>(baseViewIdx);
             posAccessor.byteOffset = 0;
             posAccessor.componentType = TINYGLTF_COMPONENT_TYPE_FLOAT;
             posAccessor.count = positions.size() / 3;
@@ -157,7 +157,7 @@ bool ConvertXToGltfMultiModel(IDirect3DDevice9* device, IAssetManager* assetMana
             
             // 法線存取器
             tinygltf::Accessor normAccessor;
-            normAccessor.bufferView = baseViewIdx + 1;
+            normAccessor.bufferView = static_cast<int>(baseViewIdx + 1);
             normAccessor.byteOffset = 0;
             normAccessor.componentType = TINYGLTF_COMPONENT_TYPE_FLOAT;
             normAccessor.count = normals.size() / 3;
@@ -166,7 +166,7 @@ bool ConvertXToGltfMultiModel(IDirect3DDevice9* device, IAssetManager* assetMana
             
             // UV存取器
             tinygltf::Accessor uvAccessor;
-            uvAccessor.bufferView = baseViewIdx + 2;
+            uvAccessor.bufferView = static_cast<int>(baseViewIdx + 2);
             uvAccessor.byteOffset = 0;
             uvAccessor.componentType = TINYGLTF_COMPONENT_TYPE_FLOAT;
             uvAccessor.count = texcoords.size() / 2;
@@ -175,7 +175,7 @@ bool ConvertXToGltfMultiModel(IDirect3DDevice9* device, IAssetManager* assetMana
             
             // 索引存取器
             tinygltf::Accessor indexAccessor;
-            indexAccessor.bufferView = baseViewIdx + 3;
+            indexAccessor.bufferView = static_cast<int>(baseViewIdx + 3);
             indexAccessor.byteOffset = 0;
             indexAccessor.componentType = TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT;
             indexAccessor.count = xModel.mesh.indices.size();
@@ -185,10 +185,10 @@ bool ConvertXToGltfMultiModel(IDirect3DDevice9* device, IAssetManager* assetMana
             // 創建圖元
             tinygltf::Primitive primitive;
             primitive.mode = TINYGLTF_MODE_TRIANGLES;
-            primitive.attributes["POSITION"] = baseAccessorIdx;
-            primitive.attributes["NORMAL"] = baseAccessorIdx + 1;
-            primitive.attributes["TEXCOORD_0"] = baseAccessorIdx + 2;
-            primitive.indices = baseAccessorIdx + 3;
+            primitive.attributes["POSITION"] = static_cast<int>(baseAccessorIdx);
+            primitive.attributes["NORMAL"] = static_cast<int>(baseAccessorIdx + 1);
+            primitive.attributes["TEXCOORD_0"] = static_cast<int>(baseAccessorIdx + 2);
+            primitive.indices = static_cast<int>(baseAccessorIdx + 3);
             
             // 處理材質和貼圖
             if (!xModel.mesh.materials.empty()) {
@@ -280,11 +280,11 @@ bool ConvertXToGltfMultiModel(IDirect3DDevice9* device, IAssetManager* assetMana
             // 創建節點
             tinygltf::Node node;
             node.name = "Model_" + std::to_string(modelIdx);
-            node.mesh = modelIdx;
+            node.mesh = static_cast<int>(modelIdx);
             gltfModel.nodes.push_back(node);
             
             // 添加到場景
-            scene.nodes.push_back(modelIdx);
+            scene.nodes.push_back(static_cast<int>(modelIdx));
         }
         
         // 創建緩衝區
@@ -305,7 +305,7 @@ bool ConvertXToGltfMultiModel(IDirect3DDevice9* device, IAssetManager* assetMana
         
         return ret;
         
-    } catch (const std::exception& e) {
+    } catch (const std::exception&) {
         return false;
     }
 }

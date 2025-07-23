@@ -5,7 +5,7 @@
 #include "D3DContext.h"
 #include "ModelManager.h"
 #include "LightManager.h"
-#include "Scene3D.h"
+#include "../Scene3D.h"
 #include "UIManager.h"
 #include "InputHandler.h"
 #include "CameraController.h"

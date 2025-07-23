@@ -3,7 +3,7 @@
 #include <d3d9.h>
 
 // Forward declarations
-class IAssetManager;
+struct IAssetManager;
 
 // 多模型 X to glTF 轉換函式
 bool ConvertXToGltfMultiModel(IDirect3DDevice9* device, IAssetManager* assetManager, 

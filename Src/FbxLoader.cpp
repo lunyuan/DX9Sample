@@ -479,7 +479,7 @@ void FbxLoader::ExtractMaterials(FbxNode* node, SkinMesh& mesh, IDirect3DDevice9
                                     // List all properties for debugging
                                     FbxProperty prop = obj->GetFirstProperty();
                                     while (prop.IsValid()) {
-                                        sprintf_s(debugMsg, "  Property: %s\n", prop.GetName());
+                                        sprintf_s(debugMsg, "  Property: %s\n", prop.GetName().Buffer());
                                         OutputDebugStringA(debugMsg);
                                         prop = obj->GetNextProperty(prop);
                                     }
