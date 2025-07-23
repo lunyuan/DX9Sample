@@ -254,11 +254,20 @@ bool UIManager::HandleMessage(const MSG& msg) {
     
     case WM_LBUTTONDOWN:
     case WM_RBUTTONDOWN: {
-      UIComponentNew* component = GetComponentAt(mouseX, mouseY);
+      bool isRightButton = (msg.message == WM_RBUTTONDOWN);
+      
+      // 對於左鍵，先嘗試取得可拖曳的元件
+      UIComponentNew* component = nullptr;
+      if (!isRightButton) {
+        component = GetDraggableComponentAt(mouseX, mouseY);
+      }
+      
+      // 如果沒有找到可拖曳元件，或是右鍵，則使用一般的檢測
+      if (!component) {
+        component = GetComponentAt(mouseX, mouseY);
+      }
       
       if (component) {
-        bool isRightButton = (msg.message == WM_RBUTTONDOWN);
-        
         // 記錄按下的組件
         if (!isRightButton) {
           pressedComponent_ = component;
@@ -277,10 +286,14 @@ bool UIManager::HandleMessage(const MSG& msg) {
             
             SetCapture(msg.hwnd);
             isDragging_ = true;
-            isInDragDropMode_ = true;
+            // 只有在 DragDrop 模式時才啟用拖放模式
+            isInDragDropMode_ = (component->dragMode == DragMode::DragDrop);
             
             // 通知組件開始拖曳
             component->OnDragStart();
+            
+            // 重要：拖曳開始時必須返回 true 以阻止相機處理
+            return true;
           }
         }
         
@@ -306,51 +319,73 @@ bool UIManager::HandleMessage(const MSG& msg) {
       if (!isRightButton && draggedComponent_ && isDragging_) {
         bool accepted = false;
         
-        if (isInDragDropMode_ && dropTarget_ && dropTarget_->CanReceiveDrop()) {
-          // 嘗試放置
-          accepted = dropTarget_->OnDrop(draggedComponent_);
-        }
-        
-        if (accepted) {
-          // 接受拖放 - 刪除拖曳的組件
-          draggedComponent_->OnDragEnd(true);
-          
-          // 清除所有對即將刪除組件的引用
-          if (hoveredComponent_ == draggedComponent_) {
-            hoveredComponent_ = nullptr;
-          }
-          if (focusedComponent_ == draggedComponent_) {
-            focusedComponent_ = nullptr;
-          }
-          if (pressedComponent_ == draggedComponent_) {
-            pressedComponent_ = nullptr;
-          }
-          
-          // 從父容器中移除
-          if (draggedComponent_->parent) {
-            auto& siblings = draggedComponent_->parent->children;
-            siblings.erase(
-              std::remove_if(siblings.begin(), siblings.end(),
-                [this](const std::unique_ptr<UIComponentNew>& child) {
-                  return child.get() == draggedComponent_;
-                }),
-              siblings.end()
-            );
-          } else {
-            // 從根組件中移除
-            rootComponents_.erase(
-              std::remove_if(rootComponents_.begin(), rootComponents_.end(),
-                [this](const std::unique_ptr<UIComponentNew>& child) {
-                  return child.get() == draggedComponent_;
-                }),
-              rootComponents_.end()
-            );
-          }
-        } else {
-          // 拒絕拖放 - 返回原始位置
-          draggedComponent_->relativeX = draggedComponent_->originalX;
-          draggedComponent_->relativeY = draggedComponent_->originalY;
-          draggedComponent_->OnDragEnd(false);
+        // 根據拖曳模式處理
+        switch (draggedComponent_->dragMode) {
+          case DragMode::Move:
+            // 可移動位置模式 - 停留在新位置
+            draggedComponent_->OnDragEnd(false);
+            break;
+            
+          case DragMode::MoveRevert:
+            // 移動但回復模式 - 返回原始位置
+            draggedComponent_->relativeX = draggedComponent_->originalX;
+            draggedComponent_->relativeY = draggedComponent_->originalY;
+            draggedComponent_->OnDragEnd(false);
+            break;
+            
+          case DragMode::DragDrop:
+            // 拖放模式 - 檢查是否有有效目標
+            if (isInDragDropMode_ && dropTarget_ && dropTarget_->CanReceiveDrop()) {
+              // 嘗試放置
+              accepted = dropTarget_->OnDrop(draggedComponent_);
+            }
+            
+            if (accepted) {
+              // 接受拖放 - 刪除拖曳的組件
+              draggedComponent_->OnDragEnd(true);
+              
+              // 清除所有對即將刪除組件的引用
+              if (hoveredComponent_ == draggedComponent_) {
+                hoveredComponent_ = nullptr;
+              }
+              if (focusedComponent_ == draggedComponent_) {
+                focusedComponent_ = nullptr;
+              }
+              if (pressedComponent_ == draggedComponent_) {
+                pressedComponent_ = nullptr;
+              }
+              
+              // 從父容器中移除
+              if (draggedComponent_->parent) {
+                auto& siblings = draggedComponent_->parent->children;
+                siblings.erase(
+                  std::remove_if(siblings.begin(), siblings.end(),
+                    [this](const std::unique_ptr<UIComponentNew>& child) {
+                      return child.get() == draggedComponent_;
+                    }),
+                  siblings.end()
+                );
+              } else {
+                // 從根組件中移除
+                rootComponents_.erase(
+                  std::remove_if(rootComponents_.begin(), rootComponents_.end(),
+                    [this](const std::unique_ptr<UIComponentNew>& child) {
+                      return child.get() == draggedComponent_;
+                    }),
+                  rootComponents_.end()
+                );
+              }
+            } else {
+              // 拒絕拖放 - 返回原始位置
+              draggedComponent_->relativeX = draggedComponent_->originalX;
+              draggedComponent_->relativeY = draggedComponent_->originalY;
+              draggedComponent_->OnDragEnd(false);
+            }
+            break;
+            
+          default:
+            // 不應該到這裡
+            break;
         }
         
         // 清理拖放狀態
@@ -364,6 +399,10 @@ bool UIManager::HandleMessage(const MSG& msg) {
         isDragging_ = false;
         isInDragDropMode_ = false;
         ReleaseCapture();
+        
+        // 重要：清除按下的組件，防止後續事件誤判
+        pressedComponent_ = nullptr;
+        
         return true;
       }
       
@@ -391,7 +430,9 @@ bool UIManager::HandleMessage(const MSG& msg) {
         }
         return handled;
       }
-      break;
+      
+      // 沒有任何特殊處理，返回 false
+      return false;
     }
     
     case WM_KEYDOWN: {
@@ -468,7 +509,7 @@ int UIManager::AddImage(const std::wstring& imagePath, int x, int y, int width, 
   element.layer = layer;
   element.id = nextId_++;
   element.visible = true;
-  element.draggable = draggable;
+  // draggable parameter is ignored for now - UIImageElement no longer has this property
   imageElements_.push_back(element);
   return element.id;
 }
@@ -806,7 +847,7 @@ void UIImageNew::Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureMana
 bool UIImageNew::OnMouseDown(int x, int y, bool isRightButton) {
   if (!enabled || !visible) return false;
   
-  if (isRightButton && draggable) {
+  if (isRightButton && dragMode != DragMode::None) {
     // 開始拖曳
     return true;
   }
@@ -1084,7 +1125,7 @@ bool UIManager::GetImageSize(const std::wstring& imagePath, int& width, int& hei
 }
 
 UIComponentNew* UIManager::CreateImage(const std::wstring& imagePath, int x, int y, int width, int height, 
-                                       bool draggable, UIComponentNew* parent, bool allowDragFromTransparent) {
+                                       DragMode dragMode, UIComponentNew* parent, bool allowDragFromTransparent) {
   auto image = std::make_unique<UIImageNew>();
   image->id = nextId_++;
   image->imagePath = imagePath;
@@ -1101,10 +1142,16 @@ UIComponentNew* UIManager::CreateImage(const std::wstring& imagePath, int x, int
   image->relativeY = y;
   image->width = width;
   image->height = height;
-  image->draggable = draggable;
+  image->dragMode = dragMode;  // 設置拖曳模式
   image->parent = parent;
   image->allowDragFromTransparent = allowDragFromTransparent;
   image->manager = this;  // 設置管理器指針
+  
+  // 調試輸出
+  char debugMsg[256];
+  sprintf_s(debugMsg, "CreateImage: %ls, dragMode=%d, allowDragFromTransparent=%d\n", 
+           image->name.c_str(), static_cast<int>(dragMode), allowDragFromTransparent);
+  OutputDebugStringA(debugMsg);
   
   // 對於圖片組件，默認啟用透明度檢測
   // 但拖曳操作會根據 allowDragFromTransparent 參數決定是否允許在透明區域拖曳
@@ -1234,7 +1281,6 @@ UIComponentNew* UIManager::GetComponentAt(int x, int y) {
 }
 
 UIComponentNew* UIManager::GetDraggableComponentAt(int x, int y) {
-  
   std::function<UIComponentNew*(const std::vector<std::unique_ptr<UIComponentNew>>&)> findComponent;
   
   findComponent = [&](const std::vector<std::unique_ptr<UIComponentNew>>& components) -> UIComponentNew* {
@@ -1247,35 +1293,29 @@ UIComponentNew* UIManager::GetDraggableComponentAt(int x, int y) {
       
       if (x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom) {
         
-        // 對於可拖曳的根組件，根據 allowDragFromTransparent 決定是否檢查透明度
-        if (auto* img = dynamic_cast<UIImageNew*>(comp.get())) {
-          if (img->draggable && !img->parent) {
+        // 先檢查子組件是否有可拖曳的
+        UIComponentNew* draggableChild = findComponent(comp->children);
+        if (draggableChild) {
+          return draggableChild;
+        }
+        
+        // 如果沒有可拖曳的子組件，檢查當前組件是否可拖曳
+        if (comp->IsDraggable()) {
+          if (auto* img = dynamic_cast<UIImageNew*>(comp.get())) {
             // 如果不允許從透明區域拖曳，則需要檢查透明度
             if (!img->allowDragFromTransparent && img->useTransparency && 
                 IsPointInTransparentArea(x, y, img->imagePath, rect)) {
-              // 透明區域拖曳調試 - 已移除
-              continue; // 在透明區域且不允許從透明區域拖曳，跳過
+              // 在透明區域且不允許從透明區域拖曳
+              // 不返回這個組件，繼續檢查其他組件
+            } else {
+              // 找到可拖曳組件
+              return comp.get();
             }
-            
-            // 找到可拖曳根組件調試 - 已移除
+          } else {
+            // 不是圖片組件，直接返回
             return comp.get();
           }
         }
-        
-        // 先檢查子組件
-        UIComponentNew* child = findComponent(comp->children);
-        if (child) return child;
-        
-        // 如果不是可拖曳的根組件，則檢查透明度
-        if (auto* img = dynamic_cast<UIImageNew*>(comp.get())) {
-          if (img->useTransparency && IsPointInTransparentArea(x, y, img->imagePath, rect)) {
-            // 透明區域跳過調試 - 已移除
-            continue; // 在透明區域，跳過此組件
-          }
-        }
-        
-        // 沒有子組件被點擊且不在透明區域，返回此組件
-        return comp.get();
       }
     }
     return nullptr;

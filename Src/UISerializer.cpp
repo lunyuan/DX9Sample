@@ -16,6 +16,7 @@ json UISerializer::SerializeComponent(const UIComponentNew* component) {
     j["height"] = component->height;
     j["visible"] = component->visible;
     j["enabled"] = component->enabled;
+    j["dragMode"] = static_cast<int>(component->dragMode);
     
     // 根據類型序列化特定屬性
     if (const auto* image = dynamic_cast<const UIImageNew*>(component)) {
@@ -23,7 +24,7 @@ json UISerializer::SerializeComponent(const UIComponentNew* component) {
         j["imagePath"] = std::string(image->imagePath.begin(), image->imagePath.end());
         j["color"] = image->color;
         j["useTransparency"] = image->useTransparency;
-        j["draggable"] = image->draggable;
+        j["dragMode"] = static_cast<int>(image->dragMode);
         j["allowDragFromTransparent"] = image->allowDragFromTransparent;
     }
     else if (const auto* button = dynamic_cast<const UIButtonNew*>(component)) {
@@ -96,7 +97,7 @@ std::unique_ptr<UIComponentNew> UISerializer::DeserializeComponent(const json& j
         image->imagePath = std::wstring(imagePath.begin(), imagePath.end());
         image->color = j.value("color", 0xFFFFFFFF);
         image->useTransparency = j.value("useTransparency", true);
-        image->draggable = j.value("draggable", false);
+        image->dragMode = static_cast<DragMode>(j.value("dragMode", 0));
         image->allowDragFromTransparent = j.value("allowDragFromTransparent", false);
         component = std::move(image);
     }
@@ -147,6 +148,7 @@ std::unique_ptr<UIComponentNew> UISerializer::DeserializeComponent(const json& j
         component->height = j.value("height", 100);
         component->visible = j.value("visible", true);
         component->enabled = j.value("enabled", true);
+        component->dragMode = static_cast<DragMode>(j.value("dragMode", 0));
         // UIManager需要dynamic_cast
         component->manager = dynamic_cast<UIManager*>(uiManager);
         

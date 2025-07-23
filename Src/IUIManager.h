@@ -10,6 +10,14 @@
 // 前向宣告新UI組件
 struct UIComponentNew;
 
+// 拖曳模式
+enum class DragMode {
+    None,           // 不可拖曳
+    Move,           // 可移動位置（拖曳後停留在新位置）
+    MoveRevert,     // 可移動但放開後回到原位
+    DragDrop        // 拖放模式（可拖曳到其他組件）
+};
+
 /// <summary>
 /// UI 元件渲染管理，同時也是輸入訊息的分派器
 /// </summary>
@@ -50,7 +58,7 @@ struct IUIManager : public IInputListener {
   
   // 新的組件系統接口
   virtual UIComponentNew* CreateImage(const std::wstring& imagePath, int x, int y, int width, int height, 
-                                     bool draggable = false, UIComponentNew* parent = nullptr,
+                                     DragMode dragMode = DragMode::None, UIComponentNew* parent = nullptr,
                                      bool allowDragFromTransparent = false) = 0;
   virtual UIComponentNew* CreateButton(const std::wstring& text, int x, int y, int width, int height,
                                       std::function<void()> onClick, UIComponentNew* parent = nullptr,

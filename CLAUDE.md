@@ -2,6 +2,20 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## CRITICAL WORKING PRACTICES
+
+**ALWAYS check current code state before making changes:**
+- Use Read/Grep tools to verify the current state of code IMMEDIATELY before modifications
+- Do NOT rely on cached or remembered code states from previous conversations
+- Verify file contents right before editing to avoid overwriting recent changes
+- This prevents reverting fixed code or losing recent modifications
+
+**DEBUG FIRST before making changes:**
+- When encountering issues, ALWAYS add debug output first to understand the problem
+- Let user test and report debug findings before modifying code  
+- Review existing documentation for previously solved similar issues
+- "時間就是金錢，朋友" - Don't waste time fixing already-fixed problems!
+
 ## Build System
 
 **Build Command (MSBuild):** 

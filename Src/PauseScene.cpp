@@ -164,7 +164,7 @@ void PauseScene::CreatePauseMenu() {
     int dialogHeight = 420;
     int dialogCenterX = dialogX + dialogWidth / 2;
     
-    auto* bgImage = uiManager->CreateImage(L"dialog1.bmp", dialogX, dialogY, dialogWidth, dialogHeight, false);
+    auto* bgImage = uiManager->CreateImage(L"dialog1.bmp", dialogX, dialogY, dialogWidth, dialogHeight, DragMode::None);
     
     // 創建標題文字
     uiManager->AddText(L"GAME PAUSED", dialogCenterX - 60, dialogY + 30, 120, 40, 0xFFFFFFFF, pauseMenuLayerId_);

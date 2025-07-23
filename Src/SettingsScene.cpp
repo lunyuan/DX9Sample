@@ -216,7 +216,7 @@ void SettingsScene::CreateSettingsUI() {
     int containerY = 50;
     
     auto* settingsContainer = uiManager->CreateImage(L"b-kuang.png", containerX, containerY, containerWidth, containerHeight, 
-                                                    true, nullptr, false);  // draggable=true, parent=nullptr, allowDragFromTransparent=false
+                                                    DragMode::Move, nullptr, false);  // DragMode::Move, parent=nullptr, allowDragFromTransparent=false
     
     // 創建標題 (作為容器的子元素，使用相對座標)
     uiManager->AddText(L"GAME SETTINGS", containerX + 200, containerY + 20, 300, 40, 0xFFFFFFFF, settingsLayerId_);

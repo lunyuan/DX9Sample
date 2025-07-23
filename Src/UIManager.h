@@ -33,7 +33,6 @@ struct UIImageElement {
   D3DCOLOR color;
   bool useTransparency;
   int layer;
-  bool draggable = false;
   bool visible = true;
   int id = -1;
 };
@@ -74,8 +73,11 @@ struct UIComponentNew {
   virtual bool OnKeyDown(WPARAM key) { return false; }
   virtual bool OnChar(WPARAM ch) { return false; }
   
+  // 拖曳相關
+  DragMode dragMode = DragMode::None;  // 拖曳模式
+  
   // 拖放事件
-  virtual bool IsDraggable() const { return false; }  // 是否可被拖曳
+  virtual bool IsDraggable() const { return dragMode != DragMode::None; }  // 是否可被拖曳
   virtual bool CanReceiveDrop() const { return false; }  // 是否可接收拖放
   virtual void OnDragEnter(UIComponentNew* dragged) {}  // 拖曳物進入
   virtual void OnDragLeave(UIComponentNew* dragged) {}  // 拖曳物離開
@@ -97,7 +99,6 @@ struct UIImageNew : public UIComponentNew {
   std::wstring imagePath;
   D3DCOLOR color = 0xFFFFFFFF;
   bool useTransparency = true;
-  bool draggable = false;
   bool allowDragFromTransparent = false;  // 是否允許從透明區域拖曳，預設為false
   bool canReceiveDrop = false;  // 是否可接收拖放
   
@@ -105,7 +106,6 @@ struct UIImageNew : public UIComponentNew {
   bool OnMouseDown(int x, int y, bool isRightButton) override;
   
   // 拖放實現
-  bool IsDraggable() const override { return draggable; }
   bool CanReceiveDrop() const override { return canReceiveDrop; }
   void OnDragEnter(UIComponentNew* dragged) override;
   void OnDragLeave(UIComponentNew* dragged) override;
@@ -245,7 +245,7 @@ public:
   
   // 新的組件系統
   UIComponentNew* CreateImage(const std::wstring& imagePath, int x, int y, int width, int height, 
-                             bool draggable = false, UIComponentNew* parent = nullptr,
+                             DragMode dragMode = DragMode::None, UIComponentNew* parent = nullptr,
                              bool allowDragFromTransparent = false) override;
   UIComponentNew* CreateButton(const std::wstring& text, int x, int y, int width, int height,
                               std::function<void()> onClick, UIComponentNew* parent = nullptr,

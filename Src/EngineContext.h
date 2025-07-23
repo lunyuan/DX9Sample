@@ -61,6 +61,7 @@ public:
   IAssetManager* GetAssetManager() override;
   IEventManager* GetEventManager() override;
   IConfigManager* GetConfigManager() override;
+  IServiceLocator* GetServices() override;
 
 private:
   HWND                          hwnd_;

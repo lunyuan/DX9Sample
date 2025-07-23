@@ -591,7 +591,7 @@ void SkinMesh::DrawWithEffect(IDirect3DDevice9* dev, ID3DXEffect* effect) {
             sprintf_s(debugMsg, "Failed to set DiffuseTexture in DrawWithEffect: HRESULT=0x%08X\n", hr);
             OutputDebugStringA(debugMsg);
         } else {
-            OutputDebugStringA("DrawWithEffect: Texture set successfully\n");
+            // OutputDebugStringA("DrawWithEffect: Texture set successfully\n");  // 移除過多的調試輸出
         }
     }
     

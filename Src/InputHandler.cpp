@@ -22,17 +22,8 @@ HRESULT InputHandler::ProcessMessages() {
     // Let our listeners handle the message first
     bool handled = false;
     
-    // Debug output for click events
-    if (msg.message == WM_LBUTTONDOWN || msg.message == WM_RBUTTONDOWN) {
-    }
-    
     for (size_t i = 0; i < listeners_.size(); ++i) {
-      if (msg.message == WM_LBUTTONDOWN || msg.message == WM_RBUTTONDOWN) {
-      }
-      
       if (listeners_[i]->HandleMessage(msg)) {
-        if (msg.message == WM_LBUTTONDOWN || msg.message == WM_RBUTTONDOWN) {
-        }
         handled = true;
         break;
       }

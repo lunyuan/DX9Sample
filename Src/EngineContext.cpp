@@ -260,6 +260,7 @@ IAssetManager* EngineContext::GetAssetManager() { return assetManager_.get(); }
 // IUISystem* EngineContext::GetUISystem() { return uiSystem_.get(); } // Removed
 IEventManager* EngineContext::GetEventManager() { return eventManager_.get(); }
 IConfigManager* EngineContext::GetConfigManager() { return configManager_.get(); }
+IServiceLocator* EngineContext::GetServices() { return serviceLocator_.get(); }
 
 // 現代架構系統初始化
 bool EngineContext::InitializeModernSystems() {
@@ -340,11 +341,12 @@ bool EngineContext::InitializeModernSystems() {
 void EngineContext::CreateServiceLocator() {
     serviceLocator_ = std::make_unique<ServiceLocator>();
     
-    // 設置所有服務
+    // 設置現代架構服務
     serviceLocator_->SetAssetManager(assetManager_.get());
     serviceLocator_->SetConfigManager(configManager_.get());
     serviceLocator_->SetEventManager(eventManager_.get());
-    // serviceLocator_->SetUISystem(uiSystem_.get()); // Removed
+    serviceLocator_->SetUIManager(uiManager_.get());
+    serviceLocator_->SetCameraController(cameraController_.get());
     
     // 獲取 D3D 設備並設置
     ComPtr<IDirect3DDevice9> device;
@@ -352,11 +354,15 @@ void EngineContext::CreateServiceLocator() {
         serviceLocator_->SetDevice(device.Get());
     }
     
-    // 只使用 UIManager
-    serviceLocator_->SetUIManager(uiManager_.get());
-    
-    // 設置 CameraController
-    serviceLocator_->SetCameraController(cameraController_.get());
+    // 設置舊架構服務（為了向後相容）
+    serviceLocator_->SetTextureManager(modelTextureManager_.get()); // 使用 model texture manager 作為預設
+    serviceLocator_->SetEffectManager(effectManager_.get());
+    serviceLocator_->SetD3DContext(d3dContext_.get());
+    serviceLocator_->SetModelManager(modelManager_.get());
+    serviceLocator_->SetLightManager(lightManager_.get());
+    serviceLocator_->SetScene3D(scene3D_.get());
+    serviceLocator_->SetInputHandler(inputHandler_.get());
+    serviceLocator_->SetPostProcessor(fullScreenQuad_.get());
 }
 
 bool EngineContext::LoadConfiguration() {

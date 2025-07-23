@@ -4,12 +4,19 @@
 ServiceLocator::ServiceLocator()
     : assetManager_(nullptr)
     , uiManager_(nullptr)
-    // , uiSystem_(nullptr) // Removed - using UIManager only
     , eventManager_(nullptr)
     , configManager_(nullptr)
     , sceneManager_(nullptr)
     , device_(nullptr)
     , cameraController_(nullptr)
+    , textureManager_(nullptr)
+    , effectManager_(nullptr)
+    , d3dContext_(nullptr)
+    , modelManager_(nullptr)
+    , lightManager_(nullptr)
+    , scene3D_(nullptr)
+    , inputHandler_(nullptr)
+    , postProcessor_(nullptr)
 {
 }
 

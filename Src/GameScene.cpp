@@ -261,19 +261,19 @@ void GameScene::OnRender() {
             device->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
             device->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
             
-            // 測試紋理載入是否正常
-            static bool textureTestDone = false;
-            static int frameCount = 0;
-            if (!textureTestDone && frameCount++ > 60) {
-                textureTestDone = true;
-                IDirect3DTexture9* testTex = nullptr;
-                HRESULT hr = D3DXCreateTextureFromFileA(device, "Horse3.bmp", &testTex);
-                char debugMsg[256];
-                sprintf_s(debugMsg, "Texture test: Horse3.bmp load %s (hr=0x%08X, tex=%p)\n", 
-                    SUCCEEDED(hr) ? "SUCCESS" : "FAILED", hr, testTex);
-                OutputDebugStringA(debugMsg);
-                if (testTex) testTex->Release();
-            }
+            // 移除紋理測試調試輸出
+            // static bool textureTestDone = false;
+            // static int frameCount = 0;
+            // if (!textureTestDone && frameCount++ > 60) {
+            //     textureTestDone = true;
+            //     IDirect3DTexture9* testTex = nullptr;
+            //     HRESULT hr = D3DXCreateTextureFromFileA(device, "Horse3.bmp", &testTex);
+            //     char debugMsg[256];
+            //     sprintf_s(debugMsg, "Texture test: Horse3.bmp load %s (hr=0x%08X, tex=%p)\n", 
+            //         SUCCEEDED(hr) ? "SUCCESS" : "FAILED", hr, testTex);
+            //     OutputDebugStringA(debugMsg);
+            //     if (testTex) testTex->Release();
+            // }
             
             // 渲染每個模型
             int modelIndex = 0;
@@ -321,35 +321,24 @@ void GameScene::OnRender() {
                         model->mesh.DrawWithAnimation(device, skeletalAnimationEffect_, boneMatrices);
                     } else if (useSimpleShader && simpleTextureEffect_) {
                         // 使用簡單shader
-                        static int simpleShaderDebugCount = 0;
-                        if (simpleShaderDebugCount++ % 300 == 0) {
-                            OutputDebugStringA("Using simple texture shader\n");
-                        }
+                        // 移除週期性的調試輸出
+                        // static int simpleShaderDebugCount = 0;
+                        // if (simpleShaderDebugCount++ % 300 == 0) {
+                        //     OutputDebugStringA("Using simple texture shader\n");
+                        // }
                         model->mesh.DrawWithEffect(device, simpleTextureEffect_);
                     } else {
                         // 沒有骨骼或shader，使用普通渲染
-                        static int noAnimDebugCount = 0;
-                        if (noAnimDebugCount++ % 300 == 0) {
-                            char debugMsg[512];
-                            sprintf_s(debugMsg, "Using fixed pipeline: useSkeletalAnimation=%s, effect=%p, joints=%zu\n",
-                                      useSkeletalAnimation ? "true" : "false",
-                                      skeletalAnimationEffect_,
-                                      model->skeleton.joints.size());
-                            OutputDebugStringA(debugMsg);
-                        }
-                        // 輸出調試信息
-                        if (noAnimDebugCount == 1) {
-                            char debugMsg2[512];
-                            sprintf_s(debugMsg2, "Model %zu materials: %zu\n", modelIndex, model->mesh.materials.size());
-                            OutputDebugStringA(debugMsg2);
-                            for (size_t matIdx = 0; matIdx < model->mesh.materials.size(); ++matIdx) {
-                                sprintf_s(debugMsg2, "  Material %zu: tex=%p, filename=%s\n", 
-                                    matIdx, 
-                                    model->mesh.materials[matIdx].tex, 
-                                    model->mesh.materials[matIdx].textureFileName.c_str());
-                                OutputDebugStringA(debugMsg2);
-                            }
-                        }
+                        // 移除週期性的調試輸出
+                        // static int noAnimDebugCount = 0;
+                        // if (noAnimDebugCount++ % 300 == 0) {
+                        //     char debugMsg[512];
+                        //     sprintf_s(debugMsg, "Using fixed pipeline: useSkeletalAnimation=%s, effect=%p, joints=%zu\n",
+                        //               useSkeletalAnimation ? "true" : "false",
+                        //               skeletalAnimationEffect_,
+                        //               model->skeleton.joints.size());
+                        //     OutputDebugStringA(debugMsg);
+                        // }
                         // 直接使用 SkinMesh 的 Draw 函數，它會使用已經設定好的貼圖
                         model->mesh.Draw(device);
                     }
@@ -499,7 +488,7 @@ void GameScene::CreateGameUI() {
     if (sevenHeight == 0) sevenHeight = 64;
     
     // 創建背景圖片作為父容器 (可拖曳，位置在 100, 100，允許從透明區域拖曳)
-    auto* bgImage = uiManager->CreateImage(L"bg.png", 100, 100, bgWidth, bgHeight, true, nullptr, true);
+    auto* bgImage = uiManager->CreateImage(L"bg.png", 100, 100, bgWidth, bgHeight, DragMode::Move, nullptr, true);
     
     // 將背景圖片轉換為UIImageNew並設定為可接收拖放
     if (auto* bgImgNew = dynamic_cast<UIImageNew*>(bgImage)) {
@@ -520,11 +509,11 @@ void GameScene::CreateGameUI() {
     
     
     // 在按鈕上再添加一層子物件 (使用 7.png，設定為可拖曳)
-    auto* buttonChild = uiManager->CreateImage(L"7.png", 10, 10, sevenWidth, sevenHeight, true, pauseButton);
+    auto* buttonChild = uiManager->CreateImage(L"7.png", 10, 10, sevenWidth, sevenHeight, DragMode::DragDrop, pauseButton);
     
     // 將 7.png 設定為可拖曳
     if (auto* sevenImg = dynamic_cast<UIImageNew*>(buttonChild)) {
-        sevenImg->draggable = true;  // 可以被拖曳
+        sevenImg->dragMode = DragMode::DragDrop;  // 可以被拖曳
     }
     
     
@@ -550,7 +539,7 @@ void GameScene::CreateGameUI() {
     int bkuangHeight = 238;
     
     // 創建 b-kuang.png 作為另一個獨立的可拖曳UI (位置在 400, 300，不允許從透明區域拖曳)
-    auto* bkuangImage = uiManager->CreateImage(L"b-kuang.png", 400, 300, bkuangWidth, bkuangHeight, true, nullptr, false);
+    auto* bkuangImage = uiManager->CreateImage(L"b-kuang.png", 400, 300, bkuangWidth, bkuangHeight, DragMode::Move, nullptr, false);
     
     // 設定 b-kuang.png 為可接收拖放
     if (auto* bkuangImgNew = dynamic_cast<UIImageNew*>(bkuangImage)) {
@@ -645,7 +634,7 @@ void GameScene::LoadUILayout() {
         }
         
         if (auto* sevenImage = dynamic_cast<UIManager*>(uiManager)->FindComponentByName<UIImageNew>(L"7.png")) {
-            sevenImage->draggable = true;
+            sevenImage->dragMode = DragMode::DragDrop;
         }
     } else {
         std::cerr << "GameScene: Failed to load UI layout, creating default UI" << std::endl;
