@@ -66,6 +66,9 @@ Practical examples of loading different 3D model formats.
 ### **MODEL_SYSTEM_REFACTORING.md**
 Refactoring plans for the model loading system with IModelLoader interface.
 
+### **GLTF_CONVERSION_FEATURE.md** *(NEW)*
+Documentation for the X to glTF model conversion feature, including usage and implementation details.
+
 ### **MODEL_EXTRACTION_EXAMPLES.md**
 Examples of extracting specific models from files containing multiple objects.
 

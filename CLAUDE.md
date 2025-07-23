@@ -71,7 +71,7 @@ The engine supports multiple 3D formats through dedicated loaders:
 - **XFileLoader/XModelLoader**: DirectX .x files (basic single-mesh support)
 - **XModelEnhanced**: Enhanced X file loader with multi-object separation
 - **FbxLoader**: Autodesk FBX format
-- **GltfLoader**: glTF 2.0 format
+- **GltfLoader/GltfModelLoader**: glTF 2.0 format with full multi-model support
 - **SkinMesh**: Unified skinned mesh container with animation support
 
 Animation system uses skeletal animation with `Skeleton` and `AnimationPlayer` classes.
@@ -89,6 +89,15 @@ Animation system uses skeletal animation with `Skeleton` and `AnimationPlayer` c
 - Use `LoadAllModels("model.fbx")` to load with textures
 - Supports conversion from X to FBX with texture preservation
 - See `doc/FBX_TEXTURE_LOADING_IMPLEMENTATION.md` for technical details
+
+**glTF File Loading Notes:**
+- glTF 2.0 ASCII format (.gltf) fully supported (2025-07-23)
+- Multi-model loading works correctly (tested with 7 horse models)
+- Use `LoadAllModels("model.gltf")` to load all meshes
+- Textures must be manually set using `mesh.SetTexture(device, "texture.bmp")`
+- Vertex colors set to white to prevent black rendering
+- Supports conversion from X to glTF with multi-model preservation
+- See `doc/GLTF_IMPLEMENTATION_STATUS.md` for details
 
 ### Key Patterns
 

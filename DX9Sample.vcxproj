@@ -157,6 +157,9 @@
     <ClCompile Include="Src\PauseScene.cpp" />
     <ClCompile Include="Src\SettingsScene.cpp" />
     <ClCompile Include="Src\GltfLoader.cpp" />
+    <ClCompile Include="Src\GltfModelLoader.cpp" />
+    <ClCompile Include="Src\SimpleGltfConverter.cpp" />
+    <ClCompile Include="Src\MultiModelGltfConverter.cpp" />
     <ClCompile Include="Src\InputHandler.cpp" />
     <ClCompile Include="Src\JsonConfigManager.cpp" />
     <ClCompile Include="Src\main.cpp" />
@@ -192,6 +195,7 @@
     <ClInclude Include="Src\PauseScene.h" />
     <ClInclude Include="Src\SettingsScene.h" />
     <ClInclude Include="Src\GltfLoader.h" />
+    <ClInclude Include="Src\GltfModelLoader.h" />
     <ClInclude Include="Src\ICameraController.h" />
     <ClInclude Include="Src\ID3DContext.h" />
     <ClInclude Include="Src\IEffectManager.h" />
@@ -206,6 +210,8 @@
     <ClInclude Include="Src\ILightManager.h" />
     <ClInclude Include="Src\IModelLoader.h" />
     <ClInclude Include="Src\IModelManager.h" />
+    <ClInclude Include="Src\SimpleGltfConverter.h" />
+    <ClInclude Include="Src\MultiModelGltfConverter.h" />
     <ClInclude Include="Src\InputHandler.h" />
     <ClInclude Include="Src\IScene.h" />
     <ClInclude Include="Src\ISceneManager.h" />

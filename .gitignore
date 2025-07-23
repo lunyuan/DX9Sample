@@ -824,5 +824,11 @@ FodyWeavers.xsd
 
 test/
 
+# Documentation images
+doc/*.png
+doc/*.jpg
+doc/*.jpeg
+doc/*.gif
+doc/*.bmp
 
 # End of https://www.toptal.com/developers/gitignore/api/c,c++,visualstudio,visualstudiocode,games,cmake,git,windows,macos,linux,assembler,homebrew,stdlib,osx,vs,zsh,virtualenv

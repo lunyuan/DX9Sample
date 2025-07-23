@@ -106,6 +106,12 @@ std::unique_ptr<UIComponentNew> UISerializer::DeserializeComponent(const json& j
         std::string text = j.value("text", "");
         button->text = std::wstring(text.begin(), text.end());
         
+        // Debug output
+        std::cout << "Creating button: " << text 
+                  << " at (" << j.value("relativeX", 0) 
+                  << ", " << j.value("relativeY", 0) << ")" 
+                  << " visible: " << j.value("visible", true) << std::endl;
+        
         std::string normalImage = j.value("normalImage", "");
         button->normalImage = std::wstring(normalImage.begin(), normalImage.end());
         

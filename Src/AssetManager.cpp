@@ -7,6 +7,7 @@
 #include "XModelEnhancedLoader.h"
 #include "FbxLoader.h"
 #include "GltfLoader.h"
+#include "GltfModelLoader.h"
 #include "ModelData.h"
 #include <d3dx9.h>
 #include <algorithm>
@@ -220,10 +221,8 @@ std::vector<std::shared_ptr<ModelData>> AssetManager::LoadAllModelsImpl(const st
             loader = std::make_unique<XModelEnhancedLoader>();
         } else if (extension == ".fbx") {
             loader = std::make_unique<FbxLoader>();
-        /* TODO: Implement IModelLoader for GltfLoader
-        } else if (extension == ".gltf") {
-            loader = std::make_unique<GltfLoader>();
-        */
+        } else if (extension == ".gltf" || extension == ".glb") {
+            loader = std::make_unique<GltfModelLoader>();
         } else {
             std::cerr << "Unsupported model format: " << extension << std::endl;
             return result;

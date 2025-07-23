@@ -89,7 +89,7 @@ struct UIComponentNew {
   int originalX = 0;
   int originalY = 0;
   
-  virtual void Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureManager* texMgr) = 0;
+  virtual void Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureManager* texMgr, ID3DXFont* font = nullptr) = 0;
   
   virtual ~UIComponentNew() = default;
 };
@@ -102,7 +102,7 @@ struct UIImageNew : public UIComponentNew {
   bool allowDragFromTransparent = false;  // 是否允許從透明區域拖曳，預設為false
   bool canReceiveDrop = false;  // 是否可接收拖放
   
-  void Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureManager* texMgr) override;
+  void Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureManager* texMgr, ID3DXFont* font = nullptr) override;
   bool OnMouseDown(int x, int y, bool isRightButton) override;
   
   // 拖放實現
@@ -131,7 +131,7 @@ struct UIButtonNew : public UIComponentNew {
   
   std::function<void()> onClick;
   
-  void Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureManager* texMgr) override;
+  void Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureManager* texMgr, ID3DXFont* font = nullptr) override;
   bool OnMouseMove(int x, int y) override;
   bool OnMouseDown(int x, int y, bool isRightButton) override;
   bool OnMouseUp(int x, int y, bool isRightButton) override;
@@ -149,7 +149,7 @@ struct UIEditNew : public UIComponentNew {
   int cursorPos = 0;
   int maxLength = 256;
   
-  void Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureManager* texMgr) override;
+  void Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureManager* texMgr, ID3DXFont* font = nullptr) override;
   bool OnMouseDown(int x, int y, bool isRightButton) override;
   bool OnKeyDown(WPARAM key) override;
   bool OnChar(WPARAM ch) override;

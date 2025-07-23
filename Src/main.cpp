@@ -2,6 +2,9 @@
 #include <windows.h>
 #include <streambuf>
 #include <iostream>
+#include <fstream>
+#include <io.h>
+#include <fcntl.h>
 #include "EngineContext.h"
 #include "GameScene.h"
 #include "PauseScene.h"
@@ -33,6 +36,7 @@ protected:
 
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
+  
   // 分配控制台視窗以顯示調試輸出
   AllocConsole();
   freopen_s((FILE**)stdout, "CONOUT$", "w", stdout);

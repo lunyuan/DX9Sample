@@ -4,6 +4,7 @@
 #include <windowsx.h>  // For GET_X_LPARAM and GET_Y_LPARAM
 #include "UICoordinateFix.h"
 #include <iostream>
+#include <set>
 
 // Factory 函式實作
 std::unique_ptr<IUIManager> CreateUIManager(ITextureManager* textureManager) {
@@ -124,9 +125,6 @@ STDMETHODIMP UIManager::Render(IDirect3DDevice9* dev) {
   // 渲染按鈕
   RenderButtons(dev);
   
-  // 渲染新組件系統
-  RenderComponents(dev, rootComponents_);
-  
   // 渲染文字元素
   for (const auto& text : textElements_) {
     if (text.layer >= layers_.size() || !layers_[text.layer].visible) continue;
@@ -140,6 +138,9 @@ STDMETHODIMP UIManager::Render(IDirect3DDevice9* dev) {
     RECT rect = text.rect;
     font_->DrawText(sprite_.Get(), text.text.c_str(), -1, &rect, text.format, finalColor);
   }
+  
+  // 渲染新組件系統（需要在 sprite 內渲染圖片）
+  RenderComponents(dev, rootComponents_);
   
   sprite_->End();
   
@@ -775,7 +776,7 @@ void UIManager::SortElementsByLayer() {
 // =============================================================================
 
 // UIImageNew 實現
-void UIImageNew::Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureManager* texMgr) {
+void UIImageNew::Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureManager* texMgr, ID3DXFont* font) {
   if (!visible || !texMgr) return;
   
   auto texture = texMgr->Load(imagePath);
@@ -870,10 +871,18 @@ bool UIImageNew::OnDrop(UIComponentNew* dragged) {
 }
 
 // UIButtonNew 實現  
-void UIButtonNew::Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureManager* texMgr) {
+void UIButtonNew::Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureManager* texMgr, ID3DXFont* font) {
   if (!visible) return;
   
   RECT absRect = GetAbsoluteRect();
+  
+  // 調試：第一次渲染時輸出按鈕信息
+  static std::set<UIButtonNew*> renderedButtons;
+  if (renderedButtons.find(this) == renderedButtons.end()) {
+    std::wcout << L"Rendering button \"" << text << L"\" at (" << absRect.left << ", " << absRect.top 
+               << ") size: " << (absRect.right - absRect.left) << "x" << (absRect.bottom - absRect.top) << std::endl;
+    renderedButtons.insert(this);
+  }
   
   // 根據狀態選擇圖片
   std::wstring currentImage;
@@ -905,8 +914,71 @@ void UIButtonNew::Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureMan
       // 不需要重設變換
     }
   } else {
-    // 渲染純色背景
-    if (dev) {
+    // 渲染純色背景 - 使用虛擬的 1x1 紋理
+    if (sprite && dev) {
+      // 調試輸出
+      static std::set<UIButtonNew*> debuggedButtons;
+      if (debuggedButtons.find(this) == debuggedButtons.end()) {
+        std::wcout << L"Button \"" << text << L"\" rendering solid background" << std::endl;
+        debuggedButtons.insert(this);
+      }
+      
+      // 創建或使用緩存的 1x1 白色紋理
+      static ComPtr<IDirect3DTexture9> s_whiteTexture;
+      if (!s_whiteTexture) {
+        if (SUCCEEDED(dev->CreateTexture(1, 1, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &s_whiteTexture, nullptr))) {
+          D3DLOCKED_RECT lockedRect;
+          if (SUCCEEDED(s_whiteTexture->LockRect(0, &lockedRect, nullptr, 0))) {
+            *(DWORD*)lockedRect.pBits = 0xFFFFFFFF; // 純白色
+            s_whiteTexture->UnlockRect(0);
+          }
+        }
+      }
+      
+      if (s_whiteTexture) {
+        // 使用 sprite 渲染純色矩形
+        RECT srcRect = {0, 0, 1, 1};
+        D3DXVECTOR3 pos(float(absRect.left), float(absRect.top), 0.0f);
+        D3DXVECTOR3 scale(float(absRect.right - absRect.left), float(absRect.bottom - absRect.top), 1.0f);
+        
+        // 根據狀態調整顏色
+        D3DCOLOR btnColor = backgroundColor;
+        if (state == State::Pressed) {
+          // 按下時變暗
+          BYTE r = (backgroundColor >> 16) & 0xFF;
+          BYTE g = (backgroundColor >> 8) & 0xFF;
+          BYTE b = backgroundColor & 0xFF;
+          r = r * 128 / 255;
+          g = g * 128 / 255;
+          b = b * 128 / 255;
+          btnColor = D3DCOLOR_ARGB(255, r, g, b);
+        } else if (state == State::Hover) {
+          // 懸停時變亮
+          BYTE r = (backgroundColor >> 16) & 0xFF;
+          BYTE g = (backgroundColor >> 8) & 0xFF;
+          BYTE b = backgroundColor & 0xFF;
+          r = min(255, r * 220 / 192);
+          g = min(255, g * 220 / 192);
+          b = min(255, b * 220 / 192);
+          btnColor = D3DCOLOR_ARGB(255, r, g, b);
+        }
+        
+        // 設置變換矩陣來縮放 1x1 紋理到按鈕大小
+        D3DXMATRIX matScale, matTrans, matWorld;
+        D3DXMatrixScaling(&matScale, scale.x, scale.y, 1.0f);
+        D3DXMatrixTranslation(&matTrans, pos.x, pos.y, 0.0f);
+        matWorld = matScale * matTrans;
+        sprite->SetTransform(&matWorld);
+        
+        sprite->Draw(s_whiteTexture.Get(), &srcRect, nullptr, nullptr, btnColor);
+        
+        // 重置變換
+        D3DXMatrixIdentity(&matWorld);
+        sprite->SetTransform(&matWorld);
+      } else {
+        // 備用方案：使用 DrawPrimitiveUP
+        sprite->End();
+      
       struct CUSTOMVERTEX {
         float x, y, z, rhw;
         D3DCOLOR color;
@@ -926,17 +998,40 @@ void UIButtonNew::Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureMan
         {float(absRect.left),  float(absRect.bottom), 0.0f, 1.0f, btnColor}
       };
       
+      // 保存當前狀態
       DWORD oldFVF;
       dev->GetFVF(&oldFVF);
+      DWORD oldAlphaBlend;
+      dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &oldAlphaBlend);
+      
+      // 設置渲染狀態
+      dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
       dev->SetFVF(D3DFVF_XYZRHW | D3DFVF_DIFFUSE);
       dev->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2, vertices, sizeof(CUSTOMVERTEX));
+      
+      // 恢復狀態
       dev->SetFVF(oldFVF);
+      dev->SetRenderState(D3DRS_ALPHABLENDENABLE, oldAlphaBlend);
+      
+      // 重新開始 sprite
+      sprite->Begin(D3DXSPRITE_ALPHABLEND | D3DXSPRITE_DONOTSAVESTATE);
+      }
     }
   }
   
-  // 渲染文字 - 需要從UIManager中獲取font
-  // 暫時跳過，因為需要重構以傳遞font參數
-  // TODO: 重構以支援文字渲染
+  // 渲染文字
+  if (font && !text.empty()) {
+    RECT textRect = absRect;
+    
+    // 根據狀態調整文字顏色
+    D3DCOLOR finalTextColor = textColor;
+    if (state == State::Disabled) {
+      finalTextColor = D3DCOLOR_ARGB(255, 128, 128, 128); // 灰色
+    }
+    
+    font->DrawText(sprite, text.c_str(), -1, &textRect, 
+                   DT_CENTER | DT_VCENTER | DT_SINGLELINE, finalTextColor);
+  }
 }
 
 bool UIButtonNew::OnMouseMove(int x, int y) {
@@ -973,7 +1068,7 @@ bool UIButtonNew::OnMouseUp(int x, int y, bool isRightButton) {
 }
 
 // UIEditNew 實現
-void UIEditNew::Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureManager* texMgr) {
+void UIEditNew::Render(IDirect3DDevice9* dev, ID3DXSprite* sprite, ITextureManager* texMgr, ID3DXFont* font) {
   if (!visible) return;
   
   RECT absRect = GetAbsoluteRect();
@@ -1210,8 +1305,10 @@ UIComponentNew* UIManager::CreateButton(const std::wstring& text, int x, int y, 
   
   if (parent) {
     parent->children.push_back(std::move(button));
+    std::wcout << L"Added button \"" << text << L"\" as child of parent" << std::endl;
   } else {
     rootComponents_.push_back(std::move(button));
+    std::wcout << L"Added button \"" << text << L"\" to root components. Total root components: " << rootComponents_.size() << std::endl;
   }
   
   return result;
@@ -1343,9 +1440,15 @@ void UIManager::SetFocusedComponent(UIComponentNew* component) {
 }
 
 void UIManager::RenderComponents(IDirect3DDevice9* dev, const std::vector<std::unique_ptr<UIComponentNew>>& components) {
+  static bool firstRender = true;
+  if (firstRender && &components == &rootComponents_) {
+    std::cout << "UIManager: Rendering " << components.size() << " root components" << std::endl;
+    firstRender = false;
+  }
+  
   for (const auto& comp : components) {
     if (comp->visible) {
-      comp->Render(dev, sprite_.Get(), textureManager_);
+      comp->Render(dev, sprite_.Get(), textureManager_, font_.Get());
       
       // 遞歸渲染子組件
       RenderComponents(dev, comp->children);

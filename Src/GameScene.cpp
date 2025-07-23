@@ -1,5 +1,6 @@
 ﻿#include "GameScene.h"
 #include <iostream>
+#include <fstream>
 #include "PauseScene.h"
 // #include "IUISystem.h" // Removed - using UIManager only
 #include "IUIManager.h"
@@ -17,6 +18,8 @@
 #include "UISerializer.h"
 #include <filesystem>
 #include "FbxSaver.h"
+#include "SimpleGltfConverter.h"
+#include "MultiModelGltfConverter.h"
 
 GameScene::GameScene() 
     : Scene("GameScene")
@@ -45,6 +48,10 @@ GameScene::~GameScene() {
 }
 
 bool GameScene::OnInitialize() {
+    // 測試檔案輸出
+    std::ofstream testFile("gamescene_init.txt");
+    testFile << "GameScene::OnInitialize called" << std::endl;
+    testFile.close();
     
     OutputDebugStringA("GameScene::OnInitialize() 開始\n");
     
@@ -459,7 +466,6 @@ bool GameScene::OnHandleInput(const MSG& msg) {
 }
 
 void GameScene::CreateGameUI() {
-    // 調試輸出：確認此函數只被調用一次
     
     // 使用舊的 UIManager，它支援父子關係
     auto* uiManager = services_->GetUIManager();
@@ -559,14 +565,25 @@ void GameScene::CreateGameUI() {
         }, nullptr,        // no parent - this is a root component
         L"");             // no button image, use default style
     
+    
+    // 添加 Convert to glTF 按鈕 - 放在畫面下方，Standalone 按鈕旁邊
+    auto* convertButton = uiManager->CreateButton(L"Convert to glTF", 280, 400, 150, 40,
+        [this]() {
+            ConvertModelToGltf();
+        }, nullptr, L"");
+    
+    if (convertButton) {
+        convertButton->name = L"Button_Convert";
+    }
+    
     // 示範如何使用名稱查找組件
     // 稍後可以通過名稱找到組件，例如：
     // auto* bgComponent = uiManager->FindComponentByName<UIImageNew>(L"bg.png");
     // auto* testButtonComponent = uiManager->FindComponentByName<UIButtonNew>(L"Button_TEST");
     
-    
     // 保存UI佈局到檔案
-    SaveUILayout();
+    SaveUILayout();  // 保存包含新按鈕的UI配置
+    
 }
 
 void GameScene::SaveUILayout() {
@@ -598,6 +615,7 @@ void GameScene::LoadUILayout() {
         return;
     }
     
+    
     // 載入UI佈局
     if (UISerializer::LoadFromFile(uiManager, uiLayoutPath)) {
         
@@ -624,6 +642,13 @@ void GameScene::LoadUILayout() {
             };
         }
         
+        // 找到Convert按鈕並重新連接點擊事件
+        if (auto* convertButton = dynamic_cast<UIManager*>(uiManager)->FindComponentByName<UIButtonNew>(L"Button_Convert")) {
+            convertButton->onClick = [this]() {
+                ConvertModelToGltf();
+            };
+        }
+        
         // 重新設定拖放配置
         if (auto* bgImage = dynamic_cast<UIManager*>(uiManager)->FindComponentByName<UIImageNew>(L"bg.png")) {
             bgImage->canReceiveDrop = true;
@@ -637,7 +662,6 @@ void GameScene::LoadUILayout() {
             sevenImage->dragMode = DragMode::DragDrop;
         }
     } else {
-        std::cerr << "GameScene: Failed to load UI layout, creating default UI" << std::endl;
         CreateGameUI();
     }
 }
@@ -762,24 +786,29 @@ void GameScene::LoadGameAssets() {
     
     // 載入遊戲資產
     try {
-        // 載入 horse_group.x 來測試是否是清理造成的問題
-        // 暫時改回 .x 檔案
-        auto models = assetManager->LoadAllModels("horse_group.x");
+        // 直接載入 glTF 檔案
+        auto models = assetManager->LoadAllModels("horse_group.gltf");
+        
+        // 輸出到檔案以便調試
+        std::ofstream loadLog("initial_load.txt");
         
         if (!models.empty()) {
-            std::cout << "GameScene: Successfully loaded " << models.size() << " models from horse_group.fbx" << std::endl;
+            loadLog << "Successfully loaded " << models.size() << " models from horse_group.gltf" << std::endl;
             
-            // 顯示每個載入的模型資訊
+            // 顯示每個辉入的模型資訊
             for (size_t i = 0; i < models.size(); ++i) {
-                std::cout << "  FBX Model " << i << ": " 
-                         << models[i]->mesh.vertices.size() << " vertices, "
-                         << models[i]->mesh.indices.size() / 3 << " triangles" << std::endl;
+                loadLog << "  Model " << i << ": " 
+                        << models[i]->mesh.vertices.size() << " vertices, "
+                        << models[i]->mesh.indices.size() / 3 << " triangles" << std::endl;
             }
             
             loadedModels_ = models;
+            loadLog << "Total models stored: " << loadedModels_.size() << std::endl;
         } else {
-            std::cerr << "GameScene: Failed to load horse_group.fbx" << std::endl;
+            loadLog << "Failed to load horse_group.x" << std::endl;
         }
+        
+        loadLog.close();
         if (!loadedModels_.empty()) {
             
             // 顯示實際載入的模型數量
@@ -1048,6 +1077,70 @@ void GameScene::OnComponentClicked(UIComponentNew* component) {
     } else if (dynamic_cast<UIEditNew*>(component)) {
         typeName = "Edit";
     }
+}
+
+void GameScene::ConvertModelToGltf() {
+    // 直接載入現有的 glTF 檔案
+    std::ofstream log("gltf_direct_load.txt");
+    log << "Loading existing glTF file..." << std::endl;
+    log.close();
+    
+    ClearCurrentModels();
+    LoadGltfModel("horse_group.gltf");
+}
+
+void GameScene::ClearCurrentModels() {
+    
+    // 清除所有模型資料
+    loadedModels_.clear();
+    namedModels_.clear();
+    
+    // 釋放紋理
+    loadedTexture_.reset();
+    
+    // 重置動畫時間
+    animationTime_ = 0.0f;
+    
+}
+
+void GameScene::LoadGltfModel(const std::string& filename) {
+    // 輸出到檔案方便調試
+    std::ofstream debugLog("gltf_load_log.txt", std::ios::app);
+    debugLog << "\n=== LoadGltfModel called ===" << std::endl;
+    debugLog << "Filename: " << filename << std::endl;
+    
+    auto* assetManager = services_->GetAssetManager();
+    if (!assetManager) {
+        debugLog << "ERROR: No AssetManager available" << std::endl;
+        debugLog.close();
+        return;
+    }
+    
+    try {
+        // 嘗試載入 glTF 模型
+        auto models = assetManager->LoadAllModels(filename);
+        
+        debugLog << "AssetManager returned " << models.size() << " models" << std::endl;
+        
+        if (!models.empty()) {
+            debugLog << "Successfully loaded models from " << filename << std::endl;
+            
+            // 儲存載入的模型
+            for (auto& model : models) {
+                debugLog << "  Model with " << model->mesh.vertices.size() << " vertices" << std::endl;
+                loadedModels_.push_back(model);
+            }
+            
+            debugLog << "Total models in loadedModels_: " << loadedModels_.size() << std::endl;
+        } else {
+            debugLog << "ERROR: No models loaded from " << filename << std::endl;
+        }
+        
+    } catch (const std::exception& e) {
+        debugLog << "EXCEPTION: " << e.what() << std::endl;
+    }
+    
+    debugLog.close();
 }
 
 // Factory 函式

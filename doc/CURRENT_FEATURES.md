@@ -1,5 +1,7 @@
 # Current Features Documentation
 
+**Last Updated: 2025-07-23**
+
 ## 1. 3D Rendering Features
 
 ### Model Loading
@@ -7,6 +9,7 @@
   - DirectX .x files with materials and textures
   - FBX files via Autodesk FBX SDK
   - glTF 2.0 files (experimental)
+  - **NEW**: X to glTF conversion capability
   
 ### Skeletal Animation
 - **Bone-based animation system**
@@ -221,7 +224,8 @@ Root
 │   └── Test text
 ├── b-kuang.png (Draggable container, receives drops)
 │   └── TEST button
-└── Standalone button
+├── Standalone button
+└── Convert to glTF button (NEW)
 ```
 
 ### Drag-Drop Behavior

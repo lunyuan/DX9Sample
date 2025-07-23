@@ -55,6 +55,11 @@ private:
     void SaveUILayout();
     void LoadUILayout();
     
+    // 模型轉換和管理
+    void ConvertModelToGltf();
+    void ClearCurrentModels();
+    void LoadGltfModel(const std::string& filename);
+    
     // 事件處理
     void OnUIComponentClicked(const Events::UIComponentClicked& event);
     void OnPlayerLevelUp(const PlayerLevelUp& event);
