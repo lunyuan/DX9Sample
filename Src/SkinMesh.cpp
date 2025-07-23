@@ -372,6 +372,10 @@ void SkinMesh::Draw(IDirect3DDevice9* dev) {
         IDirect3DBaseTexture9* currentTex = nullptr;
         dev->GetTexture(0, &currentTex);
         
+        char debugMsg[256];
+        sprintf_s(debugMsg, "SkinMesh::Draw - Material texture: %p, Current texture: %p, FileName: %s\n", 
+                  materials[0].tex, currentTex, materials[0].textureFileName.c_str());
+        OutputDebugStringA(debugMsg);
         
         if (currentTex) currentTex->Release();
       }

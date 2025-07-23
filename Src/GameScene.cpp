@@ -261,6 +261,20 @@ void GameScene::OnRender() {
             device->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
             device->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
             
+            // 測試紋理載入是否正常
+            static bool textureTestDone = false;
+            static int frameCount = 0;
+            if (!textureTestDone && frameCount++ > 60) {
+                textureTestDone = true;
+                IDirect3DTexture9* testTex = nullptr;
+                HRESULT hr = D3DXCreateTextureFromFileA(device, "Horse3.bmp", &testTex);
+                char debugMsg[256];
+                sprintf_s(debugMsg, "Texture test: Horse3.bmp load %s (hr=0x%08X, tex=%p)\n", 
+                    SUCCEEDED(hr) ? "SUCCESS" : "FAILED", hr, testTex);
+                OutputDebugStringA(debugMsg);
+                if (testTex) testTex->Release();
+            }
+            
             // 渲染每個模型
             int modelIndex = 0;
             for (const auto& model : loadedModels_) {
@@ -322,6 +336,19 @@ void GameScene::OnRender() {
                                       skeletalAnimationEffect_,
                                       model->skeleton.joints.size());
                             OutputDebugStringA(debugMsg);
+                        }
+                        // 輸出調試信息
+                        if (noAnimDebugCount == 1) {
+                            char debugMsg2[512];
+                            sprintf_s(debugMsg2, "Model %zu materials: %zu\n", modelIndex, model->mesh.materials.size());
+                            OutputDebugStringA(debugMsg2);
+                            for (size_t matIdx = 0; matIdx < model->mesh.materials.size(); ++matIdx) {
+                                sprintf_s(debugMsg2, "  Material %zu: tex=%p, filename=%s\n", 
+                                    matIdx, 
+                                    model->mesh.materials[matIdx].tex, 
+                                    model->mesh.materials[matIdx].textureFileName.c_str());
+                                OutputDebugStringA(debugMsg2);
+                            }
                         }
                         // 直接使用 SkinMesh 的 Draw 函數，它會使用已經設定好的貼圖
                         model->mesh.Draw(device);
@@ -746,9 +773,9 @@ void GameScene::LoadGameAssets() {
     
     // 載入遊戲資產
     try {
-        // 載入 horse_group.fbx
-        // 直接載入 FBX 檔案 - 現在支援紋理載入
-        auto models = assetManager->LoadAllModels("horse_group.fbx");
+        // 載入 horse_group.x 來測試是否是清理造成的問題
+        // 暫時改回 .x 檔案
+        auto models = assetManager->LoadAllModels("horse_group.x");
         
         if (!models.empty()) {
             std::cout << "GameScene: Successfully loaded " << models.size() << " models from horse_group.fbx" << std::endl;

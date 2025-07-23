@@ -157,12 +157,10 @@
     <ClCompile Include="Src\PauseScene.cpp" />
     <ClCompile Include="Src\SettingsScene.cpp" />
     <ClCompile Include="Src\GltfLoader.cpp" />
-    <ClCompile Include="Src\ImprovedTextureManager.cpp" />
     <ClCompile Include="Src\InputHandler.cpp" />
     <ClCompile Include="Src\JsonConfigManager.cpp" />
     <ClCompile Include="Src\main.cpp" />
     <ClCompile Include="Src\ModelManager.cpp" />
-    <ClCompile Include="Src\RenderTargetManager.cpp" />
     <ClCompile Include="Src\Scene.cpp" />
     <ClCompile Include="Src\Scene3D.cpp" />
     <ClCompile Include="Src\SceneManager.cpp" />
@@ -204,13 +202,11 @@
     <ClInclude Include="Src\IFullScreenQuad.h" />
     <ClInclude Include="Src\IInputHandler.h" />
     <ClInclude Include="Src\IInputListener.h" />
-    <ClInclude Include="Src\ImprovedTextureManager.h" />
     <ClInclude Include="Src\ILight.h" />
     <ClInclude Include="Src\ILightManager.h" />
     <ClInclude Include="Src\IModelLoader.h" />
     <ClInclude Include="Src\IModelManager.h" />
     <ClInclude Include="Src\InputHandler.h" />
-    <ClInclude Include="Src\IRenderTargetManager.h" />
     <ClInclude Include="Src\IScene.h" />
     <ClInclude Include="Src\ISceneManager.h" />
     <ClInclude Include="Src\IScene3D.h" />
@@ -222,7 +218,6 @@
     <ClInclude Include="Src\LightManager.h" />
     <ClInclude Include="Src\ModelData.h" />
     <ClInclude Include="Src\ModelManager.h" />
-    <ClInclude Include="Src\RenderTargetManager.h" />
     <ClInclude Include="Src\Scene.h" />
     <ClInclude Include="Src\Scene3D.h" />
     <ClInclude Include="Src\SceneManager.h" />

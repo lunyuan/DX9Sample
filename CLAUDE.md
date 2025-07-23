@@ -148,11 +148,13 @@ The engine has been redesigned to follow modern game engine patterns inspired by
 The `doc/` directory contains comprehensive documentation organized by category. See `doc/README.md` for a complete index.
 
 ### Key Documentation:
-- **Architecture**: `ARCHITECTURE_ANALYSIS.md`, `CURRENT_ARCHITECTURE.md`, `FACTORY_FUNCTIONS_AUDIT.md`
+- **Architecture**: `ARCHITECTURE_ANALYSIS.md`, `CURRENT_ARCHITECTURE.md`, `FACTORY_FUNCTIONS_AUDIT.md`, `SYSTEM_ARCHITECTURE_ANALYSIS.md`, `ARCHITECTURE_CONSOLIDATION_PLAN.md`
 - **Build & Setup**: `BUILD_INSTRUCTIONS.md`, `TESTING_INSTRUCTIONS.md`
 - **System Guides**: `EVENT_SYSTEM_USAGE.md`, `SCENE_MANAGER_USAGE.md`, `ASSET_MANAGER_USAGE.md`, `UI_SYSTEM_USAGE.md`
 - **Model System**: `MODEL_LOADER_ANALYSIS.md`, `MODEL_LOADING_EXAMPLES.md`, `X_FILE_MULTI_OBJECT_LOADING.md`, `FBX_TEXTURE_LOADING_IMPLEMENTATION.md`
 - **Implementation Details**: `CAMERA_FIX.md`, `TEXTURE_MANAGER_ARCHITECTURE.md`, `UI_DRAGGING_STATUS.md`
+- **Planning & Optimization**: `TODO_AND_ROADMAP.md`, `SYSTEM_OPTIMIZATION_ROADMAP.md`, `UNUSED_COMPONENTS_CLEANUP_LIST.md`
+- **System Analysis**: `SYSTEM_FLOW_DIAGRAMS.md`
 
 These documents provide detailed insights into the codebase structure, implementation decisions, and development process.
 
@@ -173,3 +175,29 @@ These documents provide detailed insights into the codebase structure, implement
 - This helps prevent forgetting important details during complex changes
 
 Example: See `doc/MODEL_LOADER_REFACTORING.md` for model loader consolidation
+
+## Current Architecture Status (2025-07-23)
+
+**Dual Architecture in Transition:**
+The engine currently maintains both legacy and modern architectures for backward compatibility:
+- **Legacy**: Direct component access via getter methods
+- **Modern**: ServiceLocator pattern with dependency injection
+
+See `doc/ARCHITECTURE_CONSOLIDATION_PLAN.md` for the migration strategy.
+
+**Recent Improvements:**
+- FBX texture loading fully implemented
+- Multi-object X file support enhanced
+- Documentation comprehensively updated
+
+**Cleanup Status (2025-07-23):**
+Phase 1 cleanup completed - removed ~3,000 lines of unused code:
+- ✅ ImprovedTextureManager (deleted)
+- ✅ RenderTargetManager (deleted)
+- ✅ ModelExtractor (deleted)
+- ✅ Test scenes (deleted)
+- ✅ V2 model system files (deleted)
+- ✅ d3dfile utilities (deleted)
+
+**Optimization Roadmap:**
+See `doc/SYSTEM_OPTIMIZATION_ROADMAP.md` for performance improvement plan
